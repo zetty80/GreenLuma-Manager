@@ -1,0 +1,137 @@
+﻿using Microsoft.Win32;
+using System;
+using System.IO;
+
+namespace GreenLuma_Manager.Utilities
+{
+    public class PathDetector
+    {
+        private static readonly string[] GreenLumaSignatureFiles =
+        [
+            "DLLInjector.exe",
+            "GreenLuma_2025_x86.dll",
+            "GreenLuma_2024_x86.dll",
+            "GreenLuma_2023_x86.dll"
+        ];
+
+        public static (string SteamPath, string GreenLumaPath) DetectPaths()
+        {
+            string steamPath = DetectSteamPath();
+            string greenLumaPath = DetectGreenLumaPath(steamPath);
+
+            return (steamPath, greenLumaPath);
+        }
+
+        public static string DetectSteamPath()
+        {
+            string registryPath = TryDetectSteamFromRegistry();
+            if (!string.IsNullOrEmpty(registryPath))
+                return registryPath;
+
+            return TryDetectSteamFromCommonLocations();
+        }
+
+        private static string TryDetectSteamFromRegistry()
+        {
+            string? path = TryGetRegistryPath("SOFTWARE\\WOW6432Node\\Valve\\Steam");
+            if (!string.IsNullOrEmpty(path))
+                return path;
+
+            path = TryGetRegistryPath("SOFTWARE\\Valve\\Steam");
+            if (!string.IsNullOrEmpty(path))
+                return path;
+
+            return string.Empty;
+        }
+
+        private static string? TryGetRegistryPath(string keyPath)
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(keyPath);
+                string? installPath = key?.GetValue("InstallPath") as string;
+
+                if (!string.IsNullOrWhiteSpace(installPath) &&
+                    File.Exists(Path.Combine(installPath, "Steam.exe")))
+                {
+                    return installPath;
+                }
+            }
+            catch
+            {
+            }
+
+            return null;
+        }
+
+        private static string TryDetectSteamFromCommonLocations()
+        {
+            string[] commonPaths =
+            [
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Steam"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Steam")
+            ];
+
+            foreach (string path in commonPaths)
+            {
+                if (File.Exists(Path.Combine(path, "Steam.exe")))
+                {
+                    return path;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        public static string DetectGreenLumaPath(string steamPath)
+        {
+            if (!string.IsNullOrWhiteSpace(steamPath) && Directory.Exists(steamPath))
+            {
+                if (ContainsGreenLumaFiles(steamPath))
+                {
+                    return steamPath;
+                }
+            }
+
+            return TryDetectGreenLumaFromCommonLocations();
+        }
+
+        private static string TryDetectGreenLumaFromCommonLocations()
+        {
+            string[] commonPaths =
+            [
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Steam"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "GreenLuma"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "GreenLuma"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal), "GreenLuma"),
+                "C:\\GreenLuma",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "GreenLuma")
+            ];
+
+            foreach (string path in commonPaths)
+            {
+                if (Directory.Exists(path) && ContainsGreenLumaFiles(path))
+                {
+                    return path;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static bool ContainsGreenLumaFiles(string directory)
+        {
+            foreach (string fileName in GreenLumaSignatureFiles)
+            {
+                if (File.Exists(Path.Combine(directory, fileName)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+}
