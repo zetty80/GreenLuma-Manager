@@ -22,7 +22,7 @@ namespace GreenLuma_Manager
 {
     public partial class MainWindow : Window, INotifyPropertyChanged
     {
-        public const string Version = "RC1";
+        public const string Version = "RC1.1";
 
         private readonly ConfigService _configService;
         private readonly GreenLumaService _greenLumaService;
