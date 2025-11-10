@@ -16,7 +16,7 @@ using Microsoft.Win32;
 
 namespace GreenLuma_Manager;
 
-public partial class MainWindow : INotifyPropertyChanged
+public partial class MainWindow
 {
     public const string Version = "RC2";
 
@@ -62,8 +62,6 @@ public partial class MainWindow : INotifyPropertyChanged
     public ICommand GenerateApplistCommand { get; }
     public ICommand LaunchGreenlumaCommand { get; }
     public ICommand ToggleStealthCommand { get; }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
 
     private void InitializeLoadingTimer()
     {
