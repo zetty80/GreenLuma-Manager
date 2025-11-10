@@ -7,7 +7,7 @@ namespace GreenLuma_Manager.Utilities;
 
 public class IconUrlConverter : IValueConverter
 {
-    public object? Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is not string iconUrl || string.IsNullOrWhiteSpace(iconUrl))
             return null;
@@ -44,7 +44,7 @@ public class IconUrlConverter : IValueConverter
         }
     }
 
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         throw new NotImplementedException();
     }

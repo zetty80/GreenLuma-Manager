@@ -9,11 +9,10 @@ public class SearchService
     private const string SteamAppListUrl = "https://api.steampowered.com/ISteamApps/GetAppList/v2/";
     private const string SteamAppDetailsUrl = "https://store.steampowered.com/api/appdetails?appids={0}&l=english";
     private const int MaxConcurrentRequests = 8;
-    private static readonly HttpClient _client = new();
+    private static readonly HttpClient Client = new();
     private static List<SteamApp>? _appListCache;
-    private static readonly Dictionary<string, GameDetails> _detailsCache = [];
+    private static readonly Dictionary<string, GameDetails> DetailsCache = [];
     private static DateTime _cacheExpiry = DateTime.MinValue;
-    private static DateTime _detailsCacheExpiry = DateTime.MinValue;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(24);
     private static readonly char[] NameSeparators = [' ', '-', ':', '_', '™', '®'];
     private static readonly char[] SpaceSeparator = [' '];
@@ -21,9 +20,9 @@ public class SearchService
 
     static SearchService()
     {
-        _client.DefaultRequestHeaders.Add("User-Agent",
+        Client.DefaultRequestHeaders.Add("User-Agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-        _client.Timeout = TimeSpan.FromSeconds(30);
+        Client.Timeout = TimeSpan.FromSeconds(30);
     }
 
     private static async Task<List<SteamApp>> GetAppListAsync()
@@ -33,7 +32,7 @@ public class SearchService
 
         try
         {
-            var response = await _client.GetStringAsync(SteamAppListUrl);
+            var response = await Client.GetStringAsync(SteamAppListUrl);
             var json = JObject.Parse(response);
             var apps = json["applist"]?["apps"];
 
@@ -159,7 +158,7 @@ public class SearchService
     private static async Task FetchBatchDetailsAsync(List<Game> games)
     {
         var gamesNeedingDetails = games
-            .Where(g => !_detailsCache.ContainsKey(g.AppId))
+            .Where(g => !DetailsCache.ContainsKey(g.AppId))
             .ToList();
 
         if (gamesNeedingDetails.Count == 0)
@@ -170,15 +169,16 @@ public class SearchService
 
         var syncContext = SynchronizationContext.Current;
         var semaphore = new SemaphoreSlim(MaxConcurrentRequests);
+
         try
         {
-            await Task.WhenAll(gamesNeedingDetails.Select(async game =>
+            var tasks = gamesNeedingDetails.Select(async game =>
             {
                 await semaphore.WaitAsync();
                 try
                 {
                     var details = await FetchGameDetailsAsync(game.AppId);
-                    _detailsCache[game.AppId] = details;
+                    DetailsCache[game.AppId] = details;
 
                     if (syncContext != null)
                     {
@@ -206,7 +206,7 @@ public class SearchService
                 }
                 catch
                 {
-                    _detailsCache[game.AppId] = new GameDetails("Game", string.Empty, string.Empty, true);
+                    DetailsCache[game.AppId] = new GameDetails("Game", string.Empty);
                     if (syncContext != null)
                     {
                         var tcs = new TaskCompletionSource<bool>();
@@ -233,9 +233,12 @@ public class SearchService
                 {
                     semaphore.Release();
                 }
-            }));
+            }).ToList();
 
-            if (gamesNeedingDetails.Count > 0) _detailsCacheExpiry = DateTime.Now.Add(CacheDuration);
+            await Task.WhenAll(tasks);
+
+            if (gamesNeedingDetails.Count > 0)
+                _cacheExpiry = DateTime.Now.Add(CacheDuration);
         }
         finally
         {
@@ -246,7 +249,7 @@ public class SearchService
     private static void ApplyCachedDetails(List<Game> games)
     {
         foreach (var game in games)
-            if (_detailsCache.TryGetValue(game.AppId, out var details))
+            if (DetailsCache.TryGetValue(game.AppId, out var details))
             {
                 game.Type = details.Type;
                 if (!string.IsNullOrEmpty(details.IconUrl)) game.IconUrl = details.IconUrl;
@@ -257,9 +260,10 @@ public class SearchService
     {
         var semaphore = new SemaphoreSlim(MaxConcurrentRequests);
         var syncContext = SynchronizationContext.Current;
+
         try
         {
-            await Task.WhenAll(games.Select(async game =>
+            var tasks = games.Select(async game =>
             {
                 await semaphore.WaitAsync();
                 try
@@ -267,7 +271,7 @@ public class SearchService
                     try
                     {
                         var url = string.Format(SteamAppDetailsUrl, game.AppId);
-                        var response = await _client.GetStringAsync(url);
+                        var response = await Client.GetStringAsync(url);
                         var json = JObject.Parse(response)[game.AppId];
                         if (json?["success"]?.Value<bool>() == true)
                         {
@@ -304,6 +308,7 @@ public class SearchService
                     }
                     catch
                     {
+                        // ignored
                     }
 
                     if (syncContext != null)
@@ -332,7 +337,9 @@ public class SearchService
                 {
                     semaphore.Release();
                 }
-            }));
+            }).ToList();
+
+            await Task.WhenAll(tasks);
         }
         finally
         {
@@ -345,7 +352,7 @@ public class SearchService
         try
         {
             var url = string.Format(SteamAppDetailsUrl, appId);
-            var response = await _client.GetStringAsync(url);
+            var response = await Client.GetStringAsync(url);
             var json = JObject.Parse(response)[appId];
 
             if (json?["success"]?.Value<bool>() == true)
@@ -363,18 +370,18 @@ public class SearchService
                         : capsuleImage ?? string.Empty;
 
                     if (!string.IsNullOrEmpty(iconUrl))
-                        return new GameDetails(type, iconUrl, string.Empty, type == "Game");
+                        return new GameDetails(type, iconUrl);
                 }
             }
 
             var fallbackIconUrl = await TryGetCdnImageAsync(appId);
-            return new GameDetails("Game", fallbackIconUrl ?? string.Empty, string.Empty, true);
+            return new GameDetails("Game", fallbackIconUrl ?? string.Empty);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error fetching details for {appId}: {ex.Message}");
             var fallbackIconUrl = await TryGetCdnImageAsync(appId);
-            return new GameDetails("Game", fallbackIconUrl ?? string.Empty, string.Empty, true);
+            return new GameDetails("Game", fallbackIconUrl ?? string.Empty);
         }
     }
 
@@ -393,15 +400,16 @@ public class SearchService
             try
             {
                 var head = new HttpRequestMessage(HttpMethod.Head, url);
-                var headResp = await _client.SendAsync(head);
+                var headResp = await Client.SendAsync(head);
                 if (headResp.IsSuccessStatusCode)
                     return url;
-                var getResp = await _client.GetAsync(url);
+                var getResp = await Client.GetAsync(url);
                 if (getResp.IsSuccessStatusCode)
                     return url;
             }
             catch
             {
+                // ignored
             }
 
         return null;
@@ -441,25 +449,15 @@ public class SearchService
         if (gamesWithoutIcons.Count > 0) await FetchBatchDetailsAsync(gamesWithoutIcons);
     }
 
-    public static void ClearCache()
-    {
-        _appListCache = null;
-        _detailsCache?.Clear();
-        _cacheExpiry = DateTime.MinValue;
-        _detailsCacheExpiry = DateTime.MinValue;
-    }
-
     private class SteamApp(string appId, string name)
     {
         public string AppId { get; } = appId;
         public string Name { get; } = name;
     }
 
-    private class GameDetails(string type, string iconUrl, string logoUrl, bool isGame)
+    private class GameDetails(string type, string iconUrl)
     {
         public string Type { get; } = type;
         public string IconUrl { get; } = iconUrl;
-        public string LogoUrl { get; } = logoUrl;
-        public bool IsGame { get; } = isGame;
     }
 }

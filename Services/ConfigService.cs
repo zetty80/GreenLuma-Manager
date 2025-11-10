@@ -26,7 +26,7 @@ public class ConfigService
 
             var configJson = File.ReadAllText(ConfigPath, Encoding.UTF8);
 
-            var migratedConfig = TryMigrateFromRC3(configJson);
+            var migratedConfig = TryMigrateFromOldVersion(configJson);
             if (migratedConfig != null) return migratedConfig;
 
             return DeserializeConfig(configJson) ?? new Config();
@@ -68,7 +68,7 @@ public class ConfigService
         }
     }
 
-    private static Config? TryMigrateFromRC3(string configJson)
+    private static Config? TryMigrateFromOldVersion(string configJson)
     {
         try
         {
@@ -114,6 +114,7 @@ public class ConfigService
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -135,6 +136,7 @@ public class ConfigService
         }
         catch
         {
+            // ignored
         }
     }
 }

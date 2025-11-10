@@ -5,7 +5,7 @@ using GreenLuma_Manager.Models;
 
 namespace GreenLuma_Manager.Dialogs;
 
-public partial class CreateProfileDialog : Window
+public partial class CreateProfileDialog
 {
     public CreateProfileDialog()
     {
@@ -52,12 +52,12 @@ public partial class CreateProfileDialog : Window
 
     private void Ok_Click(object sender, RoutedEventArgs? e)
     {
-        var profileName = txtProfileName.Text?.Trim();
+        var profileName = txtProfileName.Text.Trim();
 
         if (!ValidateProfileName(profileName))
             return;
 
-        Result = new Profile { Name = profileName ?? string.Empty };
+        Result = new Profile { Name = profileName };
         DialogResult = true;
         Close();
     }

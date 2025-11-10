@@ -16,17 +16,13 @@ using Microsoft.Win32;
 
 namespace GreenLuma_Manager;
 
-public partial class MainWindow : Window, INotifyPropertyChanged
+public partial class MainWindow : INotifyPropertyChanged
 {
     public const string Version = "RC1.2";
 
-    private readonly ConfigService _configService;
     private readonly ObservableCollection<Game> _games;
-    private readonly GreenLumaService _greenLumaService;
     private readonly ObservableCollection<string> _profiles;
-
     private readonly ObservableCollection<Game> _searchResults;
-    private readonly UpdateService _updateService;
 
     private Config? _config;
     private Profile? _currentProfile;
@@ -36,10 +32,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     public MainWindow()
     {
         InitializeComponent();
-
-        _configService = new ConfigService();
-        _greenLumaService = new GreenLumaService();
-        _updateService = new UpdateService();
 
         _searchResults = [];
         _games = [];
@@ -97,7 +89,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void LoadProfiles()
     {
         _profiles.Clear();
-
         foreach (var profile in ProfileService.LoadAll())
             if (profile.Name != "__empty__")
                 _profiles.Add(profile.Name);
@@ -116,19 +107,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void CheckForUpdates()
     {
-        if (_config?.DisableUpdateCheck == true)
-            return;
-
         try
         {
-            var updateInfo = await UpdateService.CheckForUpdatesAsync();
+            if (_config?.DisableUpdateCheck == true)
+                return;
 
+            var updateInfo = await UpdateService.CheckForUpdatesAsync();
             if (updateInfo?.UpdateAvailable == true) await HandleUpdateAvailable(updateInfo);
         }
         catch
         {
+            // ignored
         }
     }
+
 
     private async Task HandleUpdateAvailable(UpdateInfo updateInfo)
     {
@@ -209,20 +201,28 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void SettingsButton_Click(object? sender, RoutedEventArgs? e)
     {
-        if (_config == null)
-            return;
-
-        var hadGreenLumaPath = !string.IsNullOrWhiteSpace(_config.GreenLumaPath);
-
-        var dialog = new SettingsDialog(_config);
-
-        if (dialog.ShowDialog() == true)
+        try
         {
-            LoadConfig();
+            if (_config == null)
+                return;
 
-            var nowHasGreenLumaPath = !string.IsNullOrWhiteSpace(_config.GreenLumaPath);
+            var hadGreenLumaPath = !string.IsNullOrWhiteSpace(_config.GreenLumaPath);
 
-            if (!hadGreenLumaPath && nowHasGreenLumaPath) await ImportExistingAppListAsync();
+            var dialog = new SettingsDialog(_config);
+
+            if (dialog.ShowDialog() == true)
+            {
+                LoadConfig();
+
+                var nowHasGreenLumaPath = !string.IsNullOrWhiteSpace(_config.GreenLumaPath);
+
+                if (!hadGreenLumaPath && nowHasGreenLumaPath)
+                    await ImportExistingAppListAsync();
+            }
+        }
+        catch
+        {
+            // ignored
         }
     }
 
@@ -274,7 +274,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         storyboard.Children.Add(animation);
 
-        if (onComplete != null) storyboard.Completed += (_, args) => onComplete();
+        if (onComplete != null) storyboard.Completed += (_, _) => onComplete();
 
         storyboard.Begin();
     }
@@ -291,27 +291,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void SearchButton_Click(object sender, RoutedEventArgs e)
     {
-        var query = txtSearchInput.Text.Trim();
-
-        if (!ValidateSearchQuery(query))
-            return;
-
-        _searchCts?.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-
         try
         {
-            await PerformSearch(query, token);
+            var query = txtSearchInput.Text.Trim();
+
+            if (!ValidateSearchQuery(query))
+                return;
+
+            if (_searchCts != null)
+                await _searchCts.CancelAsync();
+            _searchCts = new CancellationTokenSource();
+            var token = _searchCts.Token;
+
+            try
+            {
+                await PerformSearch(query, token);
+            }
+            catch (OperationCanceledException)
+            {
+                _loadingDotsTimer?.Stop();
+            }
+            catch (Exception ex)
+            {
+                _loadingDotsTimer?.Stop();
+                ShowToast("Search failed: " + ex.Message, false);
+            }
         }
-        catch (OperationCanceledException)
+        catch
         {
-            _loadingDotsTimer?.Stop();
-        }
-        catch (Exception ex)
-        {
-            _loadingDotsTimer?.Stop();
-            ShowToast("Search failed: " + ex.Message, false);
+            // ignored
         }
     }
 
@@ -391,7 +399,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _loadingDotsTimer?.Stop();
 
         var fadeOut = new DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(150));
-        fadeOut.Completed += async (_, args) =>
+        fadeOut.Completed += async (_, _) =>
         {
             pnlSearchLoading.Visibility = Visibility.Collapsed;
             await Task.Delay(50);
@@ -495,6 +503,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 }
                 catch
                 {
+                    // ignored
                 }
             });
         else
@@ -517,6 +526,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 }
                 catch
                 {
+                    // ignored
                 }
             });
     }
@@ -552,75 +562,83 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void LoadProfile(string profileName)
     {
-        _currentProfile = ProfileService.Load(profileName);
-
-        if (_currentProfile == null)
+        try
         {
-            _currentProfile = new Profile { Name = profileName };
-            ProfileService.Save(_currentProfile);
-        }
+            _currentProfile = ProfileService.Load(profileName);
 
-        var gamesToProcess = _currentProfile.Games.ToList();
-        var semaphore = new SemaphoreSlim(6);
-        var tasks = new List<Task>();
-        var changed = false;
-
-        foreach (var game in gamesToProcess)
-        {
-            await semaphore.WaitAsync();
-            tasks.Add(Task.Run(async () =>
+            if (_currentProfile == null)
             {
-                try
-                {
-                    var cachedPath = IconCacheService.GetCachedIconPath(game.AppId);
-                    if (!string.IsNullOrEmpty(cachedPath))
-                    {
-                        game.IconUrl = cachedPath;
-                    }
-                    else
-                    {
-                        string? path = null;
-                        if (!string.IsNullOrWhiteSpace(game.IconUrl) &&
-                            game.IconUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                            path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
+                _currentProfile = new Profile { Name = profileName };
+                ProfileService.Save(_currentProfile);
+            }
 
-                        if (string.IsNullOrEmpty(path))
+            var gamesToProcess = _currentProfile.Games.ToList();
+            var semaphore = new SemaphoreSlim(6);
+            var tasks = new List<Task>();
+            var changed = false;
+
+            foreach (var game in gamesToProcess)
+            {
+                await semaphore.WaitAsync();
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var cachedPath = IconCacheService.GetCachedIconPath(game.AppId);
+                        if (!string.IsNullOrEmpty(cachedPath))
                         {
-                            await SearchService.FetchIconUrlAsync(game);
-                            if (!string.IsNullOrWhiteSpace(game.IconUrl))
+                            game.IconUrl = cachedPath;
+                        }
+                        else
+                        {
+                            string? path = null;
+                            if (!string.IsNullOrWhiteSpace(game.IconUrl) &&
+                                game.IconUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
                                 path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
-                        }
 
-                        if (!string.IsNullOrEmpty(path))
-                        {
-                            game.IconUrl = path;
-                            changed = true;
+                            if (string.IsNullOrEmpty(path))
+                            {
+                                await SearchService.FetchIconUrlAsync(game);
+                                if (!string.IsNullOrWhiteSpace(game.IconUrl))
+                                    path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
+                            }
+
+                            if (!string.IsNullOrEmpty(path))
+                            {
+                                game.IconUrl = path;
+                                changed = true;
+                            }
                         }
                     }
-                }
-                catch
-                {
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            }));
+                    catch
+                    {
+                        // ignored
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }));
+            }
+
+            await Task.WhenAll(tasks);
+            _games.Clear();
+            foreach (var game in gamesToProcess) _games.Add(game);
+
+            if (_config != null)
+            {
+                _config.LastProfile = profileName;
+                ConfigService.Save(_config);
+            }
+
+            if (changed && _currentProfile != null) ProfileService.Save(_currentProfile);
+
+            UpdateGameListState();
         }
-
-        await Task.WhenAll(tasks);
-        _games.Clear();
-        foreach (var game in gamesToProcess) _games.Add(game);
-
-        if (_config != null)
+        catch
         {
-            _config.LastProfile = profileName;
-            ConfigService.Save(_config);
+            // ignored
         }
-
-        if (changed && _currentProfile != null) ProfileService.Save(_currentProfile);
-
-        UpdateGameListState();
     }
 
     private void SaveCurrentProfile()
@@ -643,7 +661,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         button.ContextMenu.PlacementTarget = button;
         button.ContextMenu.Placement = PlacementMode.Bottom;
         button.ContextMenu.IsOpen = true;
-        button.ContextMenu.Closed += (_, args) => button.IsChecked = false;
+        button.ContextMenu.Closed += (_, _) => button.IsChecked = false;
     }
 
     private void AddProfileButton_Click(object sender, RoutedEventArgs e)
@@ -672,76 +690,84 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void ImportProfileButton_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog
+        try
         {
-            Filter = "JSON files|*.json|All files|*.*",
-            Title = "Import Profile"
-        };
-
-        if (dialog.ShowDialog() != true)
-            return;
-
-        var profile = ProfileService.Import(dialog.FileName);
-
-        if (profile == null)
-        {
-            ShowToast("Failed to import profile", false);
-            return;
-        }
-
-        if (!ValidateProfileName(profile.Name))
-            return;
-
-        if (_profiles.Contains(profile.Name))
-        {
-            var result = CustomMessageBox.Show(
-                $"Profile '{profile.Name}' already exists. Overwrite?",
-                "Import Profile",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (result != MessageBoxResult.Yes)
-                return;
-        }
-        else
-        {
-            _profiles.Remove("__empty__");
-            _profiles.Add(profile.Name);
-        }
-
-        var semaphore = new SemaphoreSlim(6);
-        var tasks = new List<Task>();
-        foreach (var game in profile.Games)
-        {
-            await semaphore.WaitAsync();
-            tasks.Add(Task.Run(async () =>
+            var dialog = new OpenFileDialog
             {
-                try
+                Filter = "JSON files|*.json|All files|*.*",
+                Title = "Import Profile"
+            };
+
+            if (dialog.ShowDialog() != true)
+                return;
+
+            var profile = ProfileService.Import(dialog.FileName);
+
+            if (profile == null)
+            {
+                ShowToast("Failed to import profile", false);
+                return;
+            }
+
+            if (!ValidateProfileName(profile.Name))
+                return;
+
+            if (_profiles.Contains(profile.Name))
+            {
+                var result = CustomMessageBox.Show(
+                    $"Profile '{profile.Name}' already exists. Overwrite?",
+                    "Import Profile",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result != MessageBoxResult.Yes)
+                    return;
+            }
+            else
+            {
+                _profiles.Remove("__empty__");
+                _profiles.Add(profile.Name);
+            }
+
+            var semaphore = new SemaphoreSlim(6);
+            var tasks = new List<Task>();
+            foreach (var game in profile.Games)
+            {
+                await semaphore.WaitAsync();
+                tasks.Add(Task.Run(async () =>
                 {
-                    game.IconUrl = string.Empty;
-                    await SearchService.FetchIconUrlAsync(game);
-                    if (!string.IsNullOrWhiteSpace(game.IconUrl))
+                    try
                     {
-                        var path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
-                        if (!string.IsNullOrEmpty(path)) game.IconUrl = path;
+                        game.IconUrl = string.Empty;
+                        await SearchService.FetchIconUrlAsync(game);
+                        if (!string.IsNullOrWhiteSpace(game.IconUrl))
+                        {
+                            var path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
+                            if (!string.IsNullOrEmpty(path)) game.IconUrl = path;
+                        }
                     }
-                }
-                catch
-                {
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            }));
+                    catch
+                    {
+                        // ignored
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }));
+            }
+
+            await Task.WhenAll(tasks);
+
+            ProfileService.Save(profile);
+            cmbProfile.SelectedItem = profile.Name;
+            LoadProfile(profile.Name);
+            ShowToast($"Imported profile '{profile.Name}'");
         }
-
-        await Task.WhenAll(tasks);
-
-        ProfileService.Save(profile);
-        cmbProfile.SelectedItem = profile.Name;
-        LoadProfile(profile.Name);
-        ShowToast($"Imported profile '{profile.Name}'");
+        catch
+        {
+            // ignored
+        }
     }
 
     private bool ValidateProfileName(string profileName)
@@ -847,86 +873,100 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private async void GenerateApplistButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!ValidatePathsForGeneration())
-            return;
-
-        if (_currentProfile == null)
-        {
-            ShowToast("No profile selected", false);
-            return;
-        }
-
-        if (_games.Count == 0)
-        {
-            var result = CustomMessageBox.Show(
-                "This profile contains no games. Clear the existing AppList?",
-                "Clear AppList",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (result != MessageBoxResult.Yes)
-                return;
-        }
-
-        btnGenerateApplist.IsEnabled = false;
-
         try
         {
-            SaveCurrentProfile();
+            if (!ValidatePathsForGeneration())
+                return;
 
-            if (_config != null && await GreenLumaService.GenerateAppListAsync(_currentProfile, _config))
+            if (_currentProfile == null)
             {
-                var gameWord = _games.Count == 1 ? "game" : "games";
-                ShowToast($"Generated AppList with {_games.Count} {gameWord}");
+                ShowToast("No profile selected", false);
+                return;
             }
-            else
+
+            if (_games.Count == 0)
             {
-                ShowToast("Failed to generate AppList - check paths in settings", false);
+                var result = CustomMessageBox.Show(
+                    "This profile contains no games. Clear the existing AppList?",
+                    "Clear AppList",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result != MessageBoxResult.Yes)
+                    return;
+            }
+
+            btnGenerateApplist.IsEnabled = false;
+
+            try
+            {
+                SaveCurrentProfile();
+
+                if (_config != null && await GreenLumaService.GenerateAppListAsync(_currentProfile, _config))
+                {
+                    var gameWord = _games.Count == 1 ? "game" : "games";
+                    ShowToast($"Generated AppList with {_games.Count} {gameWord}");
+                }
+                else
+                {
+                    ShowToast("Failed to generate AppList - check paths in settings", false);
+                }
+            }
+            catch (Exception ex)
+            {
+                ShowToast("Error: " + ex.Message, false);
+            }
+            finally
+            {
+                btnGenerateApplist.IsEnabled = true;
             }
         }
-        catch (Exception ex)
+        catch
         {
-            ShowToast("Error: " + ex.Message, false);
-        }
-        finally
-        {
-            btnGenerateApplist.IsEnabled = true;
+            // ignored
         }
     }
 
     private async void LaunchGreenlumaButton_Click(object sender, RoutedEventArgs e)
     {
-        if (!ValidatePathsForLaunch())
-            return;
-
-        if (!await CheckAndGenerateAppList())
-            return;
-
-        var result = CustomMessageBox.Show(
-            "This will close Steam and launch GreenLuma. Continue?",
-            "Launch GreenLuma",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-
-        if (result != MessageBoxResult.Yes)
-            return;
-
-        btnLaunchGreenluma.IsEnabled = false;
-
         try
         {
-            if (_config != null && await GreenLumaService.LaunchGreenLumaAsync(_config))
-                ShowToast("GreenLuma launched successfully");
-            else
-                ShowToast("Failed to launch GreenLuma. Check settings.", false);
+            if (!ValidatePathsForLaunch())
+                return;
+
+            if (!await CheckAndGenerateAppList())
+                return;
+
+            var result = CustomMessageBox.Show(
+                "This will close Steam and launch GreenLuma. Continue?",
+                "Launch GreenLuma",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            btnLaunchGreenluma.IsEnabled = false;
+
+            try
+            {
+                if (_config != null && await GreenLumaService.LaunchGreenLumaAsync(_config))
+                    ShowToast("GreenLuma launched successfully");
+                else
+                    ShowToast("Failed to launch GreenLuma. Check settings.", false);
+            }
+            catch (Exception ex)
+            {
+                ShowToast("Error: " + ex.Message, false);
+            }
+            finally
+            {
+                btnLaunchGreenluma.IsEnabled = true;
+            }
         }
-        catch (Exception ex)
+        catch
         {
-            ShowToast("Error: " + ex.Message, false);
-        }
-        finally
-        {
-            btnLaunchGreenluma.IsEnabled = true;
+            // ignored
         }
     }
 
@@ -984,9 +1024,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         ToastMessage.Text = message;
 
         if (ToastIcon != null)
-            ToastIcon.Fill = isSuccess
-                ? (Brush)Resources["Success"]
-                : (Brush)Resources["Danger"];
+        {
+            var successBrush = Resources["Success"] as Brush ?? Brushes.Green;
+            var dangerBrush = Resources["Danger"] as Brush ?? Brushes.Red;
+            ToastIcon.Fill = isSuccess ? successBrush : dangerBrush;
+        }
 
         Toast.Visibility = Visibility.Visible;
         Toast.Opacity = 0.0;
@@ -1006,7 +1048,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         Storyboard.SetTargetProperty(fadeOut, new PropertyPath(OpacityProperty));
         storyboard.Children.Add(fadeOut);
 
-        storyboard.Completed += (_, args) =>
+        storyboard.Completed += (_, _) =>
         {
             Toast.Visibility = Visibility.Collapsed;
             Toast.Opacity = 1.0;
@@ -1022,11 +1064,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             FileName = url,
             UseShellExecute = true
         });
-    }
-
-    protected virtual void OnPropertyChanged(string propertyName)
-    {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
     private async Task ImportExistingAppListAsync()
@@ -1056,7 +1093,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             foreach (var file in Directory.GetFiles(appListToImport, "*.txt"))
             {
-                var appId = File.ReadAllText(file).Trim();
+                var appId = (await File.ReadAllTextAsync(file)).Trim();
                 if (!string.IsNullOrWhiteSpace(appId)) appIds.Add(appId);
             }
         }
@@ -1084,20 +1121,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var newGames = new List<Game>();
         foreach (var appId in appIds)
             if (!existingAppIds.Contains(appId))
-                newGames.Add(new Game { AppId = appId, Name = $"App {appId}", Type = "Game" });
+                newGames.Add(new Game { AppId = appId, Name = string.Empty, Type = "Game" });
 
         if (newGames.Count == 0)
         {
             ShowToast("All games already in profile");
             return;
         }
-
-        defaultProfile.Games.AddRange(newGames);
-        ProfileService.Save(defaultProfile);
-
-        if (cmbProfile.SelectedItem?.ToString() == "default") LoadProfile("default");
-
-        ShowToast($"Imported {newGames.Count} games into default profile");
 
         var semaphore = new SemaphoreSlim(6);
         var tasks = new List<Task>();
@@ -1108,7 +1138,20 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             {
                 try
                 {
-                    await SearchService.FetchIconUrlAsync(game);
+                    var searchResults = await SearchService.SearchAsync(game.AppId);
+                    var match = searchResults.FirstOrDefault(g => g.AppId == game.AppId);
+
+                    if (match != null)
+                    {
+                        game.Name = match.Name;
+                        game.Type = match.Type;
+                        game.IconUrl = match.IconUrl;
+                    }
+                    else
+                    {
+                        game.Name = $"App {game.AppId}";
+                    }
+
                     if (!string.IsNullOrWhiteSpace(game.IconUrl))
                     {
                         var path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
@@ -1117,6 +1160,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
                 }
                 catch
                 {
+                    game.Name = $"App {game.AppId}";
                 }
                 finally
                 {
@@ -1126,7 +1170,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         await Task.WhenAll(tasks);
+
+        defaultProfile.Games.AddRange(newGames);
         ProfileService.Save(defaultProfile);
+
+        if (cmbProfile.SelectedItem?.ToString() == "default") LoadProfile("default");
+
+        ShowToast($"Imported {newGames.Count} games into default profile");
 
         if (showSteamWarning)
             CustomMessageBox.Show(
@@ -1140,12 +1190,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private class RelayCommand(Action<object?> execute, Func<object?, bool>? canExecute = null) : ICommand
     {
-        private readonly Func<object?, bool>? _canExecute = canExecute;
         private readonly Action<object?> _execute = execute ?? throw new ArgumentNullException(nameof(execute));
 
         public bool CanExecute(object? parameter)
         {
-            return _canExecute?.Invoke(parameter) ?? true;
+            return canExecute?.Invoke(parameter) ?? true;
         }
 
         public void Execute(object? parameter)

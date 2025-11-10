@@ -19,12 +19,13 @@ public class ProfileService
         try
         {
             EnsureProfilesDirectoryExists();
-            TryMigrateProfilesFromRC3();
+            TryMigrateProfilesFromOldVersion();
             LoadProfilesFromDirectory(profiles);
             if (profiles.Count == 0) return CreateDefaultProfile(profiles);
         }
         catch
         {
+            // ignored
         }
 
         return profiles;
@@ -53,6 +54,7 @@ public class ProfileService
             }
             catch
             {
+                // ignored
             }
     }
 
@@ -84,6 +86,7 @@ public class ProfileService
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -99,6 +102,7 @@ public class ProfileService
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -111,6 +115,7 @@ public class ProfileService
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -153,10 +158,9 @@ public class ProfileService
     {
         var invalidChars = Path.GetInvalidFileNameChars();
         return new string([.. name.Select(c => invalidChars.Contains(c) ? '_' : c)]);
-        ;
     }
 
-    private static void TryMigrateProfilesFromRC3()
+    private static void TryMigrateProfilesFromOldVersion()
     {
         try
         {
@@ -194,10 +198,12 @@ public class ProfileService
                 }
                 catch
                 {
+                    // ignored
                 }
         }
         catch
         {
+            // ignored
         }
     }
 }

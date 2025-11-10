@@ -8,11 +8,10 @@ public class AutostartManager
 {
     private const string RunKeyPath = "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run";
     private const string BackupKeyPath = "SOFTWARE\\GLM_Manager";
-    private const string SteamValueName = "Steam";
     private const string GreenLumaValueName = "GreenLumaManager";
     private const string GreenLumaMonitorValueName = "GreenLumaMonitor";
 
-    public static void ManageAutostart(bool replaceSteam, Config config)
+    public static void ManageAutostart(bool replaceSteam, Config? config)
     {
         try
         {
@@ -28,10 +27,11 @@ public class AutostartManager
         }
         catch
         {
+            // ignored
         }
     }
 
-    private static void ReplaceWithGreenLuma(RegistryKey runKey, Config config)
+    private static void ReplaceWithGreenLuma(RegistryKey runKey, Config? config)
     {
         if (config == null)
             return;
@@ -43,37 +43,6 @@ public class AutostartManager
             return;
 
         runKey.SetValue(GreenLumaMonitorValueName, $"\"{appPath}\" --launch-greenluma");
-    }
-
-    private static string CreateAutostartScript(string greenlumaPath, string injectorPath)
-    {
-        var vbsPath = Path.Combine(greenlumaPath, "GLM_Autostart.vbs");
-        var noquestionPath = Path.Combine(greenlumaPath, "NoQuestion.bin");
-
-        var escapedNoquestion = noquestionPath.Replace("\\", "\\\\");
-        var escapedGlPath = greenlumaPath.Replace("\\", "\\\\");
-        var escapedInjector = injectorPath.Replace("\\", "\\\\");
-
-        var vbsContent = "Set fso = CreateObject(\"Scripting.FileSystemObject\")\n" +
-                         "Set WshShell = CreateObject(\"WScript.Shell\")\n" +
-                         "Set objWMIService = GetObject(\"winmgmts:\\\\localhost\\root\\cimv2\")\n\n" +
-                         "Do While True\n" +
-                         "    Set colProcesses = objWMIService.ExecQuery(\"SELECT * FROM Win32_Process WHERE Name = 'steam.exe'\")\n" +
-                         "    If colProcesses.Count > 0 Then\n" +
-                         "        Exit Do\n" +
-                         "    End If\n" +
-                         "    WScript.Sleep 500\n" +
-                         "Loop\n\n" +
-                         "WScript.Sleep 2000\n\n" +
-                         "For Each objProcess in colProcesses\n" +
-                         "    objProcess.Terminate()\n" +
-                         "Next\n\n" +
-                         $"fso.CreateTextFile(\"{escapedNoquestion}\").Close\n" +
-                         $"WshShell.CurrentDirectory = \"{escapedGlPath}\"\n" +
-                         $"WshShell.Run \"\"\"{escapedInjector}\"\"\", 0, False";
-
-        File.WriteAllText(vbsPath, vbsContent);
-        return vbsPath;
     }
 
     private static void RestoreOriginalSteam(RegistryKey runKey, string? greenlumaPath)
@@ -94,46 +63,7 @@ public class AutostartManager
         }
         catch
         {
-        }
-    }
-
-    public static void SetAutostart(bool enable)
-    {
-        try
-        {
-            using var runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath, true);
-
-            if (runKey == null)
-                return;
-
-            if (enable)
-            {
-                var appPath = Environment.ProcessPath ??
-                              Path.Combine(AppContext.BaseDirectory, AppDomain.CurrentDomain.FriendlyName);
-
-                if (!string.IsNullOrWhiteSpace(appPath)) runKey.SetValue(GreenLumaValueName, $"\"{appPath}\"");
-            }
-            else
-            {
-                runKey.DeleteValue(GreenLumaValueName, false);
-            }
-        }
-        catch
-        {
-        }
-    }
-
-    public static bool IsAutostartEnabled()
-    {
-        try
-        {
-            using var runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath, false);
-            var value = runKey?.GetValue(GreenLumaValueName) as string;
-            return !string.IsNullOrWhiteSpace(value);
-        }
-        catch
-        {
-            return false;
+            // ignored
         }
     }
 
@@ -148,6 +78,7 @@ public class AutostartManager
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -172,10 +103,12 @@ public class AutostartManager
                 }
                 catch
                 {
+                    // ignored
                 }
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -188,6 +121,7 @@ public class AutostartManager
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -200,6 +134,7 @@ public class AutostartManager
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -211,6 +146,7 @@ public class AutostartManager
         }
         catch
         {
+            // ignored
         }
     }
 }

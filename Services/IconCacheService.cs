@@ -10,13 +10,13 @@ public class IconCacheService
         "GLM_Manager",
         "icons");
 
-    private static readonly HttpClient _client = new();
+    private static readonly HttpClient Client = new();
 
     static IconCacheService()
     {
-        _client.DefaultRequestHeaders.Add("User-Agent",
+        Client.DefaultRequestHeaders.Add("User-Agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-        _client.Timeout = TimeSpan.FromSeconds(30);
+        Client.Timeout = TimeSpan.FromSeconds(30);
     }
 
     public static async Task<string?> DownloadAndCacheIconAsync(string appId, string iconUrl)
@@ -36,15 +36,16 @@ public class IconCacheService
                 if (File.Exists(filePath) && new FileInfo(filePath).Length > 0)
                     return filePath;
                 var data = await TryDownloadWithRetries(url, 3, TimeSpan.FromMilliseconds(400));
-                if (data != null && data.Length > 0)
+                if (data is { Length: > 0 })
                 {
-                    File.WriteAllBytes(filePath, data);
+                    await File.WriteAllBytesAsync(filePath, data);
                     return filePath;
                 }
             }
         }
         catch
         {
+            // ignored
         }
 
         return null;
@@ -71,11 +72,11 @@ public class IconCacheService
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                using var resp = await _client.GetAsync(url, cts.Token);
+                using var resp = await Client.GetAsync(url, cts.Token);
                 if (!resp.IsSuccessStatusCode)
                     throw new HttpRequestException();
-                var data = await resp.Content.ReadAsByteArrayAsync();
-                if (data != null && data.Length > 256)
+                var data = await resp.Content.ReadAsByteArrayAsync(cts.Token);
+                if (data.Length > 256)
                     return data;
             }
             catch
@@ -111,20 +112,10 @@ public class IconCacheService
         }
         catch
         {
+            // ignored
         }
 
         return null;
-    }
-
-    public static void ClearCache()
-    {
-        try
-        {
-            if (Directory.Exists(IconCacheDir)) Directory.Delete(IconCacheDir, true);
-        }
-        catch
-        {
-        }
     }
 
     public static void DeleteCachedIcon(string appId)
@@ -151,6 +142,7 @@ public class IconCacheService
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -170,10 +162,12 @@ public class IconCacheService
                 }
                 catch
                 {
+                    // ignored
                 }
         }
         catch
         {
+            // ignored
         }
     }
 

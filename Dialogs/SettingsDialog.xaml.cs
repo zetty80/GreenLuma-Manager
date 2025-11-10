@@ -8,24 +8,19 @@ using Microsoft.Win32;
 
 namespace GreenLuma_Manager.Dialogs;
 
-public partial class SettingsDialog : Window
+public partial class SettingsDialog
 {
-    private readonly AutostartManager _autostartManager;
     private readonly Config _config;
-    private readonly ConfigService _configService;
-    private readonly PathDetector _pathDetector;
 
     public SettingsDialog(Config config)
     {
         InitializeComponent();
 
         _config = config;
-        _configService = new ConfigService();
-        _pathDetector = new PathDetector();
-        _autostartManager = new AutostartManager();
 
         LoadSettings();
         UpdateAutoUpdateVisibility();
+
         PreviewKeyDown += OnPreviewKeyDown;
     }
 
@@ -77,6 +72,7 @@ public partial class SettingsDialog : Window
     private void AutoDetect_Click(object sender, RoutedEventArgs e)
     {
         var (steamPath, greenLumaPath) = PathDetector.DetectPaths();
+
         txtSteamPath.Text = steamPath;
         txtGreenLumaPath.Text = greenLumaPath;
 
@@ -108,8 +104,10 @@ public partial class SettingsDialog : Window
             return;
 
         ConfigService.WipeData();
+
         CustomMessageBox.Show("All data has been wiped. The application will now close.", "Complete",
             icon: MessageBoxImage.Asterisk);
+
         Application.Current.Shutdown();
     }
 
@@ -150,10 +148,11 @@ public partial class SettingsDialog : Window
         Close();
     }
 
-    private static string NormalizePath(string path)
+    private static string NormalizePath(string? path)
     {
-        if (path == null)
+        if (string.IsNullOrWhiteSpace(path))
             return string.Empty;
+
         return path.Trim().TrimEnd('\\', '/');
     }
 

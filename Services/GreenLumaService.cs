@@ -7,7 +7,6 @@ namespace GreenLuma_Manager.Services;
 
 public partial class GreenLumaService
 {
-    private const int SteamKillDelayMs = 2000;
     private const int ProcessKillTimeoutMs = 5000;
     private static readonly string[] SteamProcessNames = ["steam", "steamwebhelper", "steamerrorfilereporter"];
 
@@ -153,12 +152,14 @@ public partial class GreenLumaService
                 }
                 catch
                 {
+                    // ignored
                 }
 
             foreach (var processName in SteamProcessNames) KillProcessesByName(processName);
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -172,6 +173,7 @@ public partial class GreenLumaService
             }
             catch
             {
+                // ignored
             }
     }
 
@@ -209,6 +211,7 @@ public partial class GreenLumaService
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -236,6 +239,7 @@ public partial class GreenLumaService
         }
         catch
         {
+            // ignored
         }
 
         return null;
@@ -257,6 +261,7 @@ public partial class GreenLumaService
         }
         catch
         {
+            // ignored
         }
 
         return s;
@@ -302,6 +307,7 @@ public partial class GreenLumaService
                     }
                     catch
                     {
+                        // ignored
                     }
 
                     settings["Dll"] = $" \"{full}\"";
@@ -315,6 +321,7 @@ public partial class GreenLumaService
                     }
                     catch
                     {
+                        // ignored
                     }
 
                     settings["Dll"] = $" \"{fullDllPath}\"";
@@ -353,7 +360,7 @@ public partial class GreenLumaService
         settings["WaitForProcessTermination"] = " 1";
         settings["EnableFakeParentProcess"] = " 0";
         settings["CreateFiles"] = " 1";
-        if (!settings.ContainsKey("FileToCreate_2")) settings["FileToCreate_2"] = "";
+        settings.TryAdd("FileToCreate_2", "");
     }
 
     private static List<string> ApplySettings(List<string> originalLines, Dictionary<string, string> settings)

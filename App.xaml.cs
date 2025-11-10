@@ -5,14 +5,14 @@ using GreenLuma_Manager.Services;
 
 namespace GreenLuma_Manager;
 
-public partial class App : Application
+public partial class App
 {
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         try
         {
-            if (e.Args != null && e.Args.Length > 0)
+            if (e.Args.Length > 0)
                 foreach (var arg in e.Args)
                     if (string.Equals(arg, "--launch-greenluma", StringComparison.OrdinalIgnoreCase))
                     {
@@ -23,6 +23,7 @@ public partial class App : Application
                         }
                         catch
                         {
+                            // ignored
                         }
 
                         Shutdown();
@@ -39,6 +40,7 @@ public partial class App : Application
         }
         catch
         {
+            // ignored
         }
     }
 
@@ -84,6 +86,7 @@ public partial class App : Application
                             }
                             catch
                             {
+                                // ignored
                             }
                             finally
                             {
@@ -109,6 +112,7 @@ public partial class App : Application
                             }
                             catch
                             {
+                                // ignored
                             }
                             finally
                             {
@@ -127,6 +131,7 @@ public partial class App : Application
                     }
                     catch
                     {
+                        // ignored
                     }
 
                 tasks.Clear();
@@ -134,6 +139,7 @@ public partial class App : Application
         }
         catch
         {
+            // ignored
         }
     }
 }

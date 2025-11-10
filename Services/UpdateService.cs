@@ -10,14 +10,13 @@ public partial class UpdateService
 {
     private const string GitHubApiUrl = "https://api.github.com/repos/3vil3vo/GreenLuma-Manager/releases/latest";
     private static readonly string[] RcSeparator = ["-rc"];
-    private static readonly string[] DashSeparator = ["-"];
 
-    private static readonly HttpClient _client;
+    private static readonly HttpClient Client;
 
     static UpdateService()
     {
-        _client = new HttpClient();
-        _client.DefaultRequestHeaders.Add("User-Agent", "GreenLuma-Manager");
+        Client = new HttpClient();
+        Client.DefaultRequestHeaders.Add("User-Agent", "GreenLuma-Manager");
     }
 
     private static string CurrentVersion => MainWindow.Version;
@@ -35,7 +34,7 @@ public partial class UpdateService
     {
         try
         {
-            var response = await _client.GetStringAsync(GitHubApiUrl);
+            var response = await Client.GetStringAsync(GitHubApiUrl);
             return ParseUpdateInfo(response);
         }
         catch
@@ -166,10 +165,10 @@ public partial class UpdateService
         var tempDir = Path.GetTempPath();
         var tempExePath = Path.Combine(tempDir, "GreenLumaManager_Update.exe");
 
-        using var response = await _client.GetAsync(downloadUrl);
+        using var response = await Client.GetAsync(downloadUrl);
         response.EnsureSuccessStatusCode();
 
-        using var fileStream = new FileStream(tempExePath, FileMode.Create, FileAccess.Write, FileShare.None);
+        await using var fileStream = new FileStream(tempExePath, FileMode.Create, FileAccess.Write, FileShare.None);
         await response.Content.CopyToAsync(fileStream);
 
         return tempExePath;

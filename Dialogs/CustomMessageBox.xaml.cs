@@ -6,7 +6,7 @@ using SolidColorBrush = System.Windows.Media.SolidColorBrush;
 
 namespace GreenLuma_Manager.Dialogs;
 
-public partial class CustomMessageBox : Window
+public partial class CustomMessageBox
 {
     private CustomMessageBox(string message, string title, MessageBoxButton buttons, MessageBoxImage icon)
     {
@@ -121,7 +121,7 @@ public partial class CustomMessageBox : Window
                 : new Thickness(0)
         };
 
-        button.Click += (s, e) =>
+        button.Click += (_, _) =>
         {
             Result = result;
             DialogResult = result != MessageBoxResult.Cancel && result != MessageBoxResult.No;
