@@ -1306,8 +1306,7 @@ public partial class MainWindow
     {
         if (_config == null)
         {
-            StatusIndicator.Fill = Resources["Danger"] as Brush ?? Brushes.Red;
-            TxtStatus.Text = "Not Configured";
+            SetStatusIndicator(Resources["Danger"] as Brush ?? Brushes.Red, "Not Configured");
             return;
         }
 
@@ -1316,8 +1315,7 @@ public partial class MainWindow
 
         if (string.IsNullOrWhiteSpace(steamPath) || string.IsNullOrWhiteSpace(greenLumaPath))
         {
-            StatusIndicator.Fill = Resources["Danger"] as Brush ?? Brushes.Red;
-            TxtStatus.Text = "Not Configured";
+            SetStatusIndicator(Resources["Danger"] as Brush ?? Brushes.Red, "Not Configured");
             return;
         }
 
@@ -1326,19 +1324,45 @@ public partial class MainWindow
             Path.GetFullPath(greenLumaPath),
             StringComparison.OrdinalIgnoreCase);
 
-        StatusIndicator.Fill = Resources["Success"] as Brush ?? Brushes.Green;
+        var successBrush = Resources["Success"] as Brush ?? Brushes.Green;
 
         if (isSamePath)
         {
-            TxtStatus.Text = "Ready  •  Normal Mode";
+            SetStatusIndicator(successBrush, "Ready  •  Normal Mode");
         }
         else if (_config.NoHook)
         {
-            TxtStatus.Text = "Ready  •  Enhanced Stealth Mode";
+            SetStatusIndicator(successBrush, "Ready  •  Enhanced Stealth Mode");
         }
         else
         {
-            TxtStatus.Text = "Ready  •  Stealth Mode";
+            SetStatusIndicator(successBrush, "Ready  •  Stealth Mode");
         }
+    }
+
+    private void SetStatusIndicator(Brush color, string text)
+    {
+        var storyboard = new Storyboard();
+
+        var fadeOut = new DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(150));
+        Storyboard.SetTarget(fadeOut, TxtStatus);
+        Storyboard.SetTargetProperty(fadeOut, new PropertyPath(OpacityProperty));
+
+        fadeOut.Completed += (_, _) =>
+        {
+            StatusIndicator.Fill = color;
+            TxtStatus.Text = text;
+
+            var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(150));
+            Storyboard.SetTarget(fadeIn, TxtStatus);
+            Storyboard.SetTargetProperty(fadeIn, new PropertyPath(OpacityProperty));
+
+            var storyboardIn = new Storyboard();
+            storyboardIn.Children.Add(fadeIn);
+            storyboardIn.Begin();
+        };
+
+        storyboard.Children.Add(fadeOut);
+        storyboard.Begin();
     }
 }
