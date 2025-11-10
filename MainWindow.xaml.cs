@@ -38,18 +38,18 @@ public partial class MainWindow
         _games = [];
         _profiles = [];
 
-        FocusSearchCommand = new RelayCommand(_ => txtSearchInput.Focus());
+        FocusSearchCommand = new RelayCommand(_ => TxtSearchInput.Focus());
         GenerateApplistCommand =
-            new RelayCommand(_ => GenerateApplistButton_Click(btnGenerateApplist, new RoutedEventArgs()));
+            new RelayCommand(_ => GenerateApplistButton_Click(BtnGenerateApplist, new RoutedEventArgs()));
         LaunchGreenlumaCommand =
-            new RelayCommand(_ => LaunchGreenlumaButton_Click(btnLaunchGreenluma, new RoutedEventArgs()));
+            new RelayCommand(_ => LaunchGreenlumaButton_Click(BtnLaunchGreenluma, new RoutedEventArgs()));
         ToggleStealthCommand =
-            new RelayCommand(_ => tglStealthMode.IsChecked = !tglStealthMode.IsChecked.GetValueOrDefault());
+            new RelayCommand(_ => TglStealthMode.IsChecked = !TglStealthMode.IsChecked.GetValueOrDefault());
 
         DataContext = this;
-        dgResults.ItemsSource = _searchResults;
-        lstGames.ItemsSource = _games;
-        cmbProfile.ItemsSource = _profiles;
+        DgResults.ItemsSource = _searchResults;
+        LstGames.ItemsSource = _games;
+        CmbProfile.ItemsSource = _profiles;
 
         InitializeLoadingTimer();
         LoadConfig();
@@ -75,14 +75,14 @@ public partial class MainWindow
 
     private void LoadingDotsTimer_Tick(object? sender, EventArgs e)
     {
-        var text = txtLoadingDots.Text;
-        txtLoadingDots.Text = text.Length >= 3 ? "." : text + ".";
+        var text = TxtLoadingDots.Text;
+        TxtLoadingDots.Text = text.Length >= 3 ? "." : text + ".";
     }
 
     private void LoadConfig()
     {
         _config = ConfigService.Load();
-        if (_config != null) tglStealthMode.IsChecked = _config.NoHook;
+        if (_config != null) TglStealthMode.IsChecked = _config.NoHook;
     }
 
     private void LoadProfiles()
@@ -97,9 +97,9 @@ public partial class MainWindow
         var lastProfile = _config?.LastProfile ?? "default";
 
         if (_profiles.Contains(lastProfile))
-            cmbProfile.SelectedItem = lastProfile;
+            CmbProfile.SelectedItem = lastProfile;
         else
-            cmbProfile.SelectedIndex = 0;
+            CmbProfile.SelectedIndex = 0;
 
         if (_profiles.Count == 1) _profiles.Add("__empty__");
     }
@@ -242,24 +242,24 @@ public partial class MainWindow
 
     private void SearchGrid_PreviewMouseDown(object sender, MouseButtonEventArgs e)
     {
-        txtSearchInput.Focus();
+        TxtSearchInput.Focus();
     }
 
     private void SearchInput_GotFocus(object sender, RoutedEventArgs e)
     {
-        if (txtSearchPlaceholder.Visibility != Visibility.Visible)
+        if (TxtSearchPlaceholder.Visibility != Visibility.Visible)
             return;
 
-        AnimatePlaceholder(0.5, 0.0, () => txtSearchPlaceholder.Visibility = Visibility.Collapsed);
+        AnimatePlaceholder(0.5, 0.0, () => TxtSearchPlaceholder.Visibility = Visibility.Collapsed);
     }
 
     private void SearchInput_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(txtSearchInput.Text))
+        if (!string.IsNullOrWhiteSpace(TxtSearchInput.Text))
             return;
 
-        txtSearchPlaceholder.Visibility = Visibility.Visible;
-        txtSearchPlaceholder.Opacity = 0.0;
+        TxtSearchPlaceholder.Visibility = Visibility.Visible;
+        TxtSearchPlaceholder.Opacity = 0.0;
         AnimatePlaceholder(0.0, 0.5);
     }
 
@@ -268,7 +268,7 @@ public partial class MainWindow
         var storyboard = new Storyboard();
         var animation = new DoubleAnimation(from, to, TimeSpan.FromMilliseconds(150));
 
-        Storyboard.SetTarget(animation, txtSearchPlaceholder);
+        Storyboard.SetTarget(animation, TxtSearchPlaceholder);
         Storyboard.SetTargetProperty(animation, new PropertyPath(OpacityProperty));
 
         storyboard.Children.Add(animation);
@@ -285,14 +285,14 @@ public partial class MainWindow
 
         Keyboard.ClearFocus();
         e.Handled = true;
-        Dispatcher.BeginInvoke((Action)(() => btnSearch.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent))));
+        Dispatcher.BeginInvoke((Action)(() => BtnSearch.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent))));
     }
 
     private async void SearchButton_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            var query = txtSearchInput.Text.Trim();
+            var query = TxtSearchInput.Text.Trim();
 
             if (!ValidateSearchQuery(query))
                 return;
@@ -363,9 +363,9 @@ public partial class MainWindow
 
     private void ShowSearchLoading()
     {
-        dgResults.Visibility = Visibility.Collapsed;
-        pnlEmptyResults.Visibility = Visibility.Collapsed;
-        pnlSearchLoading.Visibility = Visibility.Visible;
+        DgResults.Visibility = Visibility.Collapsed;
+        PnlEmptyResults.Visibility = Visibility.Collapsed;
+        PnlSearchLoading.Visibility = Visibility.Visible;
 
         var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(250))
         {
@@ -377,13 +377,13 @@ public partial class MainWindow
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
 
-        pnlSearchLoading.BeginAnimation(OpacityProperty, fadeIn);
+        PnlSearchLoading.BeginAnimation(OpacityProperty, fadeIn);
 
-        var transform = (ScaleTransform)pnlSearchLoading.RenderTransform;
+        var transform = (ScaleTransform)PnlSearchLoading.RenderTransform;
         transform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleIn);
         transform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleIn);
 
-        txtLoadingDots.Text = ".";
+        TxtLoadingDots.Text = ".";
         _loadingDotsTimer?.Start();
     }
 
@@ -394,13 +394,13 @@ public partial class MainWindow
         foreach (var game in results) _searchResults.Add(game);
 
         SortResultsByName();
-        txtResultCount.Text = _searchResults.Count.ToString();
+        TxtResultCount.Text = _searchResults.Count.ToString();
         _loadingDotsTimer?.Stop();
 
         var fadeOut = new DoubleAnimation(1.0, 0.0, TimeSpan.FromMilliseconds(150));
         fadeOut.Completed += async (_, _) =>
         {
-            pnlSearchLoading.Visibility = Visibility.Collapsed;
+            PnlSearchLoading.Visibility = Visibility.Collapsed;
             await Task.Delay(50);
 
             if (_searchResults.Count > 0)
@@ -409,45 +409,45 @@ public partial class MainWindow
                 ShowEmptyResults();
         };
 
-        pnlSearchLoading.BeginAnimation(OpacityProperty, fadeOut);
+        PnlSearchLoading.BeginAnimation(OpacityProperty, fadeOut);
     }
 
     private void SortResultsByName()
     {
-        dgResults.Items.SortDescriptions.Clear();
-        dgResults.Items.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
+        DgResults.Items.SortDescriptions.Clear();
+        DgResults.Items.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
 
-        foreach (var column in dgResults.Columns) column.SortDirection = null;
+        foreach (var column in DgResults.Columns) column.SortDirection = null;
 
-        var nameColumn = dgResults.Columns.FirstOrDefault(c => c.Header?.ToString() == "NAME");
+        var nameColumn = DgResults.Columns.FirstOrDefault(c => c.Header?.ToString() == "NAME");
         if (nameColumn != null) nameColumn.SortDirection = ListSortDirection.Ascending;
     }
 
     private void ShowResultsGrid()
     {
-        dgResults.Opacity = 0.0;
-        dgResults.Visibility = Visibility.Visible;
-        pnlEmptyResults.Visibility = Visibility.Collapsed;
+        DgResults.Opacity = 0.0;
+        DgResults.Visibility = Visibility.Visible;
+        PnlEmptyResults.Visibility = Visibility.Collapsed;
 
         var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(250))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
 
-        dgResults.BeginAnimation(OpacityProperty, fadeIn);
+        DgResults.BeginAnimation(OpacityProperty, fadeIn);
         ShowToast($"Found {_searchResults.Count} results");
     }
 
     private void ShowEmptyResults()
     {
-        dgResults.Visibility = Visibility.Collapsed;
-        pnlEmptyResults.Visibility = Visibility.Visible;
+        DgResults.Visibility = Visibility.Collapsed;
+        PnlEmptyResults.Visibility = Visibility.Visible;
         ShowToast("No results found", false);
     }
 
     private void ResultRow_DoubleClick(object sender, MouseButtonEventArgs e)
     {
-        if (dgResults.SelectedItem is Game selectedGame)
+        if (DgResults.SelectedItem is Game selectedGame)
         {
             var fakeButton = new Button { Tag = selectedGame };
             AddGameButton_Click(fakeButton, new RoutedEventArgs());
@@ -532,10 +532,10 @@ public partial class MainWindow
 
     private void ProfileComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (cmbProfile.SelectedItem == null)
+        if (CmbProfile.SelectedItem == null)
             return;
 
-        var profileName = cmbProfile.SelectedItem.ToString();
+        var profileName = CmbProfile.SelectedItem.ToString();
 
         if (profileName == "__empty__")
         {
@@ -549,12 +549,12 @@ public partial class MainWindow
     private void RestorePreviousProfile(SelectionChangedEventArgs e)
     {
         if (e.RemovedItems.Count > 0 && e.RemovedItems[0] is string removedItem && removedItem != "__empty__")
-            cmbProfile.SelectedItem = removedItem;
+            CmbProfile.SelectedItem = removedItem;
         else
             foreach (var profile in _profiles)
                 if (profile != "__empty__")
                 {
-                    cmbProfile.SelectedItem = profile;
+                    CmbProfile.SelectedItem = profile;
                     break;
                 }
     }
@@ -682,7 +682,7 @@ public partial class MainWindow
 
         ProfileService.Save(newProfile);
         _profiles.Add(newProfile.Name);
-        cmbProfile.SelectedItem = newProfile.Name;
+        CmbProfile.SelectedItem = newProfile.Name;
 
         ShowToast($"Created profile '{newProfile.Name}'");
     }
@@ -759,7 +759,7 @@ public partial class MainWindow
             await Task.WhenAll(tasks);
 
             ProfileService.Save(profile);
-            cmbProfile.SelectedItem = profile.Name;
+            CmbProfile.SelectedItem = profile.Name;
             LoadProfile(profile.Name);
             ShowToast($"Imported profile '{profile.Name}'");
         }
@@ -830,7 +830,7 @@ public partial class MainWindow
 
         if (_profiles.Count == 1 && !_profiles.Contains("__empty__")) _profiles.Add("__empty__");
 
-        cmbProfile.SelectedIndex = 0;
+        CmbProfile.SelectedIndex = 0;
         ShowToast($"Deleted profile '{deletedName}'");
     }
 
@@ -854,8 +854,8 @@ public partial class MainWindow
 
     private void UpdateGameListState()
     {
-        txtGameCount.Text = _games.Count.ToString();
-        pnlEmptyGames.Visibility = _games.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        TxtGameCount.Text = _games.Count.ToString();
+        PnlEmptyGames.Visibility = _games.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void StealthMode_Changed(object sender, RoutedEventArgs e)
@@ -895,7 +895,7 @@ public partial class MainWindow
                     return;
             }
 
-            btnGenerateApplist.IsEnabled = false;
+            BtnGenerateApplist.IsEnabled = false;
 
             try
             {
@@ -917,7 +917,7 @@ public partial class MainWindow
             }
             finally
             {
-                btnGenerateApplist.IsEnabled = true;
+                BtnGenerateApplist.IsEnabled = true;
             }
         }
         catch
@@ -945,7 +945,7 @@ public partial class MainWindow
             if (result != MessageBoxResult.Yes)
                 return;
 
-            btnLaunchGreenluma.IsEnabled = false;
+            BtnLaunchGreenluma.IsEnabled = false;
 
             try
             {
@@ -960,7 +960,7 @@ public partial class MainWindow
             }
             finally
             {
-                btnLaunchGreenluma.IsEnabled = true;
+                BtnLaunchGreenluma.IsEnabled = true;
             }
         }
         catch
@@ -1010,7 +1010,7 @@ public partial class MainWindow
                 return false;
 
             case MessageBoxResult.Yes:
-                GenerateApplistButton_Click(btnGenerateApplist, new RoutedEventArgs());
+                GenerateApplistButton_Click(BtnGenerateApplist, new RoutedEventArgs());
                 await Task.Delay(500);
                 break;
         }
@@ -1173,7 +1173,7 @@ public partial class MainWindow
         defaultProfile.Games.AddRange(newGames);
         ProfileService.Save(defaultProfile);
 
-        if (cmbProfile.SelectedItem?.ToString() == "default") LoadProfile("default");
+        if (CmbProfile.SelectedItem?.ToString() == "default") LoadProfile("default");
 
         ShowToast($"Imported {newGames.Count} games into default profile");
 

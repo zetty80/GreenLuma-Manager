@@ -11,7 +11,7 @@ public partial class CreateProfileDialog
     {
         InitializeComponent();
         Result = null;
-        txtProfileName.Focus();
+        TxtProfileName.Focus();
         PreviewKeyDown += OnPreviewKeyDown;
     }
 
@@ -52,7 +52,7 @@ public partial class CreateProfileDialog
 
     private void Ok_Click(object sender, RoutedEventArgs? e)
     {
-        var profileName = txtProfileName.Text.Trim();
+        var profileName = TxtProfileName.Text.Trim();
 
         if (!ValidateProfileName(profileName))
             return;

@@ -5,6 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="clr-namespace:GreenLuma_Manager"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="clr-namespace:GreenLuma_Manager.Models"
     xmlns:utilities="clr-namespace:GreenLuma_Manager.Utilities"
     Title="GreenLuma Manager"
     Width="1036"
@@ -34,7 +35,6 @@
             <SolidColorBrush x:Key="Success" Color="#FF4CAF50" />
             <SolidColorBrush x:Key="Danger" Color="#FFFF4444" />
 
-            <BooleanToVisibilityConverter x:Key="BoolToVis" />
             <utilities:IconUrlConverter x:Key="IconUrlConverter" />
 
             <Style TargetType="ToolTip">
@@ -492,33 +492,6 @@
                 <Style.Triggers>
                     <Trigger Property="IsMouseOver" Value="True">
                         <Setter Property="Background" Value="#FF2A2A2A" />
-                    </Trigger>
-                </Style.Triggers>
-            </Style>
-
-            <Style x:Key="SecondBtn" TargetType="Button">
-                <Setter Property="Background" Value="{StaticResource SurfaceBg}" />
-                <Setter Property="BorderBrush" Value="{StaticResource Border}" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="Width" Value="44" />
-                <Setter Property="Height" Value="44" />
-                <Setter Property="Cursor" Value="Hand" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="Button">
-                            <Border
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Border>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-                <Style.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Opacity" Value="0.8" />
                     </Trigger>
                 </Style.Triggers>
             </Style>
@@ -1004,25 +977,6 @@
                 </Style.Triggers>
             </Style>
 
-            <Storyboard x:Key="FadeIn">
-                <DoubleAnimation
-                    Storyboard.TargetProperty="Opacity"
-                    From="0"
-                    To="1"
-                    Duration="0:0:0.3" />
-            </Storyboard>
-
-            <Storyboard x:Key="SlideIn">
-                <ThicknessAnimation
-                    Storyboard.TargetProperty="Margin"
-                    From="0,20,0,0"
-                    To="0,0,0,0"
-                    Duration="0:0:0.3">
-                    <ThicknessAnimation.EasingFunction>
-                        <CubicEase EasingMode="EaseOut" />
-                    </ThicknessAnimation.EasingFunction>
-                </ThicknessAnimation>
-            </Storyboard>
         </ResourceDictionary>
     </Window.Resources>
 
@@ -1217,20 +1171,20 @@
 
                             <Grid Grid.Column="0">
                                 <TextBox
-                                    x:Name="txtSearchInput"
+                                    x:Name="TxtSearchInput"
                                     GotFocus="SearchInput_GotFocus"
                                     KeyDown="SearchInput_KeyDown"
                                     LostFocus="SearchInput_LostFocus"
                                     Style="{StaticResource SearchInput}" />
                                 <TextBlock
-                                    x:Name="txtSearchPlaceholder"
+                                    x:Name="TxtSearchPlaceholder"
                                     IsHitTestVisible="False"
                                     Style="{StaticResource PlaceholderTxt}"
                                     Text="Search for games, DLC, software..." />
                             </Grid>
 
                             <Button
-                                x:Name="btnSearch"
+                                x:Name="BtnSearch"
                                 Grid.Column="2"
                                 Width="133"
                                 Click="SearchButton_Click"
@@ -1249,7 +1203,7 @@
                         </Grid>
 
                         <StackPanel
-                            x:Name="pnlSearchLoading"
+                            x:Name="PnlSearchLoading"
                             Margin="0,12,0,0"
                             Opacity="0"
                             Orientation="Horizontal"
@@ -1263,7 +1217,7 @@
                                 Foreground="{StaticResource TextSecond}"
                                 Text="Searching Steam" />
                             <TextBlock
-                                x:Name="txtLoadingDots"
+                                x:Name="TxtLoadingDots"
                                 VerticalAlignment="Center"
                                 FontSize="13"
                                 Foreground="{StaticResource TextSecond}"
@@ -1285,7 +1239,7 @@
                                 Background="{StaticResource SurfaceBg}"
                                 CornerRadius="12">
                                 <TextBlock
-                                    x:Name="txtResultCount"
+                                    x:Name="TxtResultCount"
                                     FontSize="12"
                                     FontWeight="SemiBold"
                                     Foreground="{StaticResource TextSecond}"
@@ -1301,7 +1255,7 @@
                             CornerRadius="12">
                             <Grid>
                                 <DataGrid
-                                    x:Name="dgResults"
+                                    x:Name="DgResults"
                                     CanUserSortColumns="True"
                                     MouseDoubleClick="ResultRow_DoubleClick"
                                     Style="{StaticResource ResultsGrid}"
@@ -1348,7 +1302,7 @@
                                 </DataGrid>
 
                                 <StackPanel
-                                    x:Name="pnlEmptyResults"
+                                    x:Name="PnlEmptyResults"
                                     Margin="40"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center">
@@ -1409,13 +1363,13 @@
                             </Grid.ColumnDefinitions>
 
                             <ComboBox
-                                x:Name="cmbProfile"
+                                x:Name="CmbProfile"
                                 Grid.Column="0"
                                 SelectionChanged="ProfileComboBox_SelectionChanged"
                                 Style="{StaticResource ProfileCombo}" />
 
                             <ToggleButton
-                                x:Name="btnProfileOptions"
+                                x:Name="BtnProfileOptions"
                                 Grid.Column="2"
                                 Click="ProfileOptionsButton_Click"
                                 Style="{StaticResource SecondToggleBtn}"
@@ -1551,7 +1505,7 @@
                                 Background="{StaticResource DarkBg}"
                                 CornerRadius="12">
                                 <TextBlock
-                                    x:Name="txtGameCount"
+                                    x:Name="TxtGameCount"
                                     FontSize="12"
                                     FontWeight="SemiBold"
                                     Foreground="{StaticResource TextSecond}"
@@ -1567,9 +1521,9 @@
                             CornerRadius="12">
                             <Grid>
                                 <ScrollViewer VerticalScrollBarVisibility="Hidden">
-                                    <ItemsControl x:Name="lstGames" Margin="12">
+                                    <ItemsControl x:Name="LstGames" Margin="12">
                                         <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
+                                            <DataTemplate DataType="{x:Type models:Game}">
                                                 <Border
                                                     x:Name="GameItemBorder"
                                                     Margin="0,0,0,8"
@@ -1777,7 +1731,7 @@
                                 </ScrollViewer>
 
                                 <StackPanel
-                                    x:Name="pnlEmptyGames"
+                                    x:Name="PnlEmptyGames"
                                     Margin="40"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center">
@@ -1844,7 +1798,7 @@
                                 </StackPanel>
 
                                 <ToggleButton
-                                    x:Name="tglStealthMode"
+                                    x:Name="TglStealthMode"
                                     Grid.Column="2"
                                     VerticalAlignment="Center"
                                     Checked="StealthMode_Changed"
@@ -1854,7 +1808,7 @@
                         </Border>
 
                         <Button
-                            x:Name="btnGenerateApplist"
+                            x:Name="BtnGenerateApplist"
                             Margin="0,0,0,12"
                             Click="GenerateApplistButton_Click"
                             Style="{StaticResource AccentBtn}">
@@ -1874,7 +1828,7 @@
                         </Button>
 
                         <Button
-                            x:Name="btnLaunchGreenluma"
+                            x:Name="BtnLaunchGreenluma"
                             Click="LaunchGreenlumaButton_Click"
                             Style="{StaticResource PrimaryBtn}">
                             <StackPanel Orientation="Horizontal">
@@ -1912,7 +1866,7 @@
                         Margin="0,0,8,0"
                         Fill="{StaticResource Success}" />
                     <TextBlock
-                        x:Name="txtStatus"
+                        x:Name="TxtStatus"
                         FontSize="12"
                         Foreground="{StaticResource TextSecond}"
                         Text="Ready" />
@@ -1929,6 +1883,7 @@
 
         <Border
             x:Name="Toast"
+            Grid.Row="0"
             Grid.RowSpan="3"
             MaxWidth="400"
             Margin="0,0,0,60"
@@ -1968,4 +1923,3 @@
         </Border>
     </Grid>
 </Window>
-

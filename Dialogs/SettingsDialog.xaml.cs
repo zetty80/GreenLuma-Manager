@@ -26,11 +26,11 @@ public partial class SettingsDialog
 
     private void LoadSettings()
     {
-        txtSteamPath.Text = _config.SteamPath;
-        txtGreenLumaPath.Text = _config.GreenLumaPath;
-        chkReplaceSteamAutostart.IsChecked = _config.ReplaceSteamAutostart;
-        chkDisableUpdateCheck.IsChecked = _config.DisableUpdateCheck;
-        chkAutoUpdate.IsChecked = _config.AutoUpdate;
+        TxtSteamPath.Text = _config.SteamPath;
+        TxtGreenLumaPath.Text = _config.GreenLumaPath;
+        ChkReplaceSteamAutostart.IsChecked = _config.ReplaceSteamAutostart;
+        ChkDisableUpdateCheck.IsChecked = _config.DisableUpdateCheck;
+        ChkAutoUpdate.IsChecked = _config.AutoUpdate;
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
@@ -50,10 +50,10 @@ public partial class SettingsDialog
             Title = "Select Steam folder (e.g., C:\\Program Files (x86)\\Steam)"
         };
 
-        if (!string.IsNullOrWhiteSpace(txtSteamPath.Text) && Directory.Exists(txtSteamPath.Text))
-            dialog.InitialDirectory = txtSteamPath.Text;
+        if (!string.IsNullOrWhiteSpace(TxtSteamPath.Text) && Directory.Exists(TxtSteamPath.Text))
+            dialog.InitialDirectory = TxtSteamPath.Text;
 
-        if (dialog.ShowDialog() == true) txtSteamPath.Text = dialog.FolderName;
+        if (dialog.ShowDialog() == true) TxtSteamPath.Text = dialog.FolderName;
     }
 
     private void BrowseGreenLuma_Click(object sender, RoutedEventArgs e)
@@ -63,18 +63,18 @@ public partial class SettingsDialog
             Title = "Select GreenLuma folder (containing DLLInjector.exe)"
         };
 
-        if (!string.IsNullOrWhiteSpace(txtGreenLumaPath.Text) && Directory.Exists(txtGreenLumaPath.Text))
-            dialog.InitialDirectory = txtGreenLumaPath.Text;
+        if (!string.IsNullOrWhiteSpace(TxtGreenLumaPath.Text) && Directory.Exists(TxtGreenLumaPath.Text))
+            dialog.InitialDirectory = TxtGreenLumaPath.Text;
 
-        if (dialog.ShowDialog() == true) txtGreenLumaPath.Text = dialog.FolderName;
+        if (dialog.ShowDialog() == true) TxtGreenLumaPath.Text = dialog.FolderName;
     }
 
     private void AutoDetect_Click(object sender, RoutedEventArgs e)
     {
         var (steamPath, greenLumaPath) = PathDetector.DetectPaths();
 
-        txtSteamPath.Text = steamPath;
-        txtGreenLumaPath.Text = greenLumaPath;
+        TxtSteamPath.Text = steamPath;
+        TxtGreenLumaPath.Text = greenLumaPath;
 
         if (!string.IsNullOrWhiteSpace(steamPath) && !string.IsNullOrWhiteSpace(greenLumaPath))
             CustomMessageBox.Show("Paths detected successfully!", "Success", icon: MessageBoxImage.Asterisk);
@@ -118,28 +118,28 @@ public partial class SettingsDialog
 
     private void UpdateAutoUpdateVisibility()
     {
-        if (chkAutoUpdate == null || chkDisableUpdateCheck == null)
+        if (ChkAutoUpdate == null || ChkDisableUpdateCheck == null)
             return;
 
-        var isEnabled = !chkDisableUpdateCheck.IsChecked.GetValueOrDefault();
-        chkAutoUpdate.IsEnabled = isEnabled;
+        var isEnabled = !ChkDisableUpdateCheck.IsChecked.GetValueOrDefault();
+        ChkAutoUpdate.IsEnabled = isEnabled;
 
-        if (!isEnabled) chkAutoUpdate.IsChecked = false;
+        if (!isEnabled) ChkAutoUpdate.IsChecked = false;
     }
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
-        var steamPath = NormalizePath(txtSteamPath.Text);
-        var greenLumaPath = NormalizePath(txtGreenLumaPath.Text);
+        var steamPath = NormalizePath(TxtSteamPath.Text);
+        var greenLumaPath = NormalizePath(TxtGreenLumaPath.Text);
 
         if (!ValidatePaths(steamPath, greenLumaPath))
             return;
 
         _config.SteamPath = steamPath;
         _config.GreenLumaPath = greenLumaPath;
-        _config.ReplaceSteamAutostart = chkReplaceSteamAutostart.IsChecked.GetValueOrDefault();
-        _config.DisableUpdateCheck = chkDisableUpdateCheck.IsChecked.GetValueOrDefault();
-        _config.AutoUpdate = chkAutoUpdate.IsChecked.GetValueOrDefault();
+        _config.ReplaceSteamAutostart = ChkReplaceSteamAutostart.IsChecked.GetValueOrDefault();
+        _config.DisableUpdateCheck = ChkDisableUpdateCheck.IsChecked.GetValueOrDefault();
+        _config.AutoUpdate = ChkAutoUpdate.IsChecked.GetValueOrDefault();
 
         ConfigService.Save(_config);
         AutostartManager.ManageAutostart(_config.ReplaceSteamAutostart, _config);
