@@ -869,8 +869,6 @@ public partial class MainWindow
         _config.NoHook = toggleButton.IsChecked.GetValueOrDefault();
         ConfigService.Save(_config);
 
-        var status = toggleButton.IsChecked.GetValueOrDefault() ? "enabled" : "disabled";
-        ShowToast($"Stealth mode {status}");
         UpdateStatusIndicator();
     }
 
