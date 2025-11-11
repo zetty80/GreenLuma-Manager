@@ -11,6 +11,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using GreenLuma_Manager.Dialogs;
 using GreenLuma_Manager.Models;
+using GreenLuma_Manager.Plugins;
 using GreenLuma_Manager.Services;
 using Microsoft.Win32;
 
@@ -33,6 +34,7 @@ public partial class MainWindow
     public MainWindow()
     {
         InitializeComponent();
+        UpdatePluginButtons();
 
         _searchResults = [];
         _games = [];
@@ -1281,27 +1283,6 @@ public partial class MainWindow
         game.IsEditing = false;
     }
 
-    private class RelayCommand(Action<object?> execute, Func<object?, bool>? canExecute = null) : ICommand
-    {
-        private readonly Action<object?> _execute = execute ?? throw new ArgumentNullException(nameof(execute));
-
-        public bool CanExecute(object? parameter)
-        {
-            return canExecute?.Invoke(parameter) ?? true;
-        }
-
-        public void Execute(object? parameter)
-        {
-            _execute(parameter);
-        }
-
-        public event EventHandler? CanExecuteChanged
-        {
-            add => CommandManager.RequerySuggested += value;
-            remove => CommandManager.RequerySuggested -= value;
-        }
-    }
-
     private void UpdateStatusIndicator()
     {
         if (_config == null)
@@ -1327,17 +1308,11 @@ public partial class MainWindow
         var successBrush = Resources["Success"] as Brush ?? Brushes.Green;
 
         if (isSamePath)
-        {
             SetStatusIndicator(successBrush, "Ready  •  Normal Mode");
-        }
         else if (_config.NoHook)
-        {
             SetStatusIndicator(successBrush, "Ready  •  Enhanced Stealth Mode");
-        }
         else
-        {
             SetStatusIndicator(successBrush, "Ready  •  Stealth Mode");
-        }
     }
 
     private void SetStatusIndicator(Brush color, string text)
@@ -1364,5 +1339,82 @@ public partial class MainWindow
 
         storyboard.Children.Add(fadeOut);
         storyboard.Begin();
+    }
+
+    private void ManagePluginsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new PluginsDialog
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
+        UpdatePluginButtons();
+    }
+
+    public void UpdatePluginButtons()
+    {
+        PnlPluginButtons.Children.Clear();
+
+        var plugins = PluginService.GetEnabledPlugins();
+
+        foreach (var plugin in plugins)
+        {
+            var button = new Button
+            {
+                Style = (Style)FindResource("IconBtn"),
+                ToolTip = plugin.Name,
+                Margin = new Thickness(0, 0, 8, 0),
+                Tag = plugin
+            };
+
+            var path = new System.Windows.Shapes.Path
+            {
+                Width = 18,
+                Height = 18,
+                Data = plugin.Icon,
+                Fill = (SolidColorBrush)FindResource("TextSecond"),
+                Stretch = Stretch.Uniform
+            };
+
+            button.Content = path;
+            button.Click += PluginButton_Click;
+
+            PnlPluginButtons.Children.Add(button);
+        }
+    }
+
+    private void PluginButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.Tag is not IPlugin plugin) return;
+
+        try
+        {
+            plugin.ShowUi(this);
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    private class RelayCommand(Action<object?> execute, Func<object?, bool>? canExecute = null) : ICommand
+    {
+        private readonly Action<object?> _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+
+        public bool CanExecute(object? parameter)
+        {
+            return canExecute?.Invoke(parameter) ?? true;
+        }
+
+        public void Execute(object? parameter)
+        {
+            _execute(parameter);
+        }
+
+        public event EventHandler? CanExecuteChanged
+        {
+            add => CommandManager.RequerySuggested += value;
+            remove => CommandManager.RequerySuggested -= value;
+        }
     }
 }

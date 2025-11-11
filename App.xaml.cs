@@ -12,6 +12,9 @@ public partial class App
         base.OnStartup(e);
         try
         {
+            PluginService.Initialize();
+            PluginService.OnApplicationStartup();
+
             if (e.Args.Length > 0)
                 foreach (var arg in e.Args)
                     if (string.Equals(arg, "--launch-greenluma", StringComparison.OrdinalIgnoreCase))
@@ -42,6 +45,20 @@ public partial class App
         {
             // ignored
         }
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            PluginService.OnApplicationShutdown();
+        }
+        catch
+        {
+            // ignored
+        }
+
+        base.OnExit(e);
     }
 
     private static async Task WarmupIconsAsync(List<Profile> profiles)
