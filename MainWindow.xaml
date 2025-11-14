@@ -1088,7 +1088,8 @@
                         Margin="0,0,8,0"
                         Click="ManagePluginsButton_Click"
                         Style="{StaticResource IconBtn}"
-                        ToolTip="Manage Plugins">
+                        ToolTip="Manage Plugins"
+                        Visibility="Collapsed">
                         <Path
                             Width="18"
                             Height="18"
