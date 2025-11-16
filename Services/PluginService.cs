@@ -19,6 +19,11 @@ public class PluginService
         "GLM_Manager",
         "plugins.json");
 
+    private static readonly string PendingDeletesPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "GLM_Manager",
+        "pending_deletes.json");
+
     private static readonly List<(PluginInfo Info, IPlugin? Instance, AssemblyLoadContext? Context)> LoadedPlugins = [];
     private static List<PluginInfo> _pluginInfos = [];
 
@@ -27,6 +32,7 @@ public class PluginService
         try
         {
             EnsurePluginsDirectoryExists();
+            CleanupPendingDeletes();
             _pluginInfos = LoadPluginInfos();
             LoadPlugins();
         }
@@ -232,20 +238,103 @@ public class PluginService
                 }
 
                 LoadedPlugins.Remove(loaded);
+
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
             }
 
             _pluginInfos.RemoveAll(p => p.Id == pluginInfo.Id);
             SavePluginInfos();
 
             if (File.Exists(pluginPath))
+            {
                 try
                 {
                     File.Delete(pluginPath);
                 }
                 catch
                 {
-                    // ignored
+                    MarkForDeletion(pluginPath);
                 }
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    private static void MarkForDeletion(string path)
+    {
+        try
+        {
+            var list = LoadPendingDeletes();
+            if (!list.Contains(path)) list.Add(path);
+            SavePendingDeletes(list);
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    private static List<string> LoadPendingDeletes()
+    {
+        try
+        {
+            if (!File.Exists(PendingDeletesPath)) return new List<string>();
+            var json = File.ReadAllText(PendingDeletesPath, Encoding.UTF8);
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+            var serializer = new DataContractJsonSerializer(typeof(List<string>));
+            return (List<string>?)serializer.ReadObject(stream) ?? new List<string>();
+        }
+        catch
+        {
+            return new List<string>();
+        }
+    }
+
+    private static void SavePendingDeletes(List<string> paths)
+    {
+        try
+        {
+            using var stream = new MemoryStream();
+            var serializer = new DataContractJsonSerializer(typeof(List<string>));
+            serializer.WriteObject(stream, paths);
+            var json = Encoding.UTF8.GetString(stream.ToArray());
+            File.WriteAllText(PendingDeletesPath, json, Encoding.UTF8);
+        }
+        catch
+        {
+            // ignored
+        }
+    }
+
+    private static void CleanupPendingDeletes()
+    {
+        try
+        {
+            if (!File.Exists(PendingDeletesPath)) return;
+
+            var paths = LoadPendingDeletes();
+            var remaining = new List<string>();
+
+            foreach (var path in paths)
+            {
+                try
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                }
+                catch
+                {
+                    remaining.Add(path);
+                }
+            }
+
+            if (remaining.Count > 0)
+                SavePendingDeletes(remaining);
+            else
+                File.Delete(PendingDeletesPath);
         }
         catch
         {
