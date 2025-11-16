@@ -1,8 +1,54 @@
 ﻿using System.Net.Http;
+using System.Collections.Concurrent;
 using GreenLuma_Manager.Models;
 using Newtonsoft.Json.Linq;
 
 namespace GreenLuma_Manager.Services;
+
+public class CacheEntry<T>
+{
+    public DateTime Expiry { get; set; }
+    public T Data { get; set; } = default!;
+}
+
+public static class SteamApiCache
+{
+    private static readonly ConcurrentDictionary<string, CacheEntry<object>> Cache = new();
+    private static readonly ConcurrentDictionary<string, Task<object>> TaskCache = new();
+    private static readonly TimeSpan CacheDurationLocal = TimeSpan.FromMinutes(30);
+
+    public static async Task<T> GetOrAddAsync<T>(string key, Func<Task<T>> fetchFunc)
+    {
+        if (Cache.TryGetValue(key, out var entry))
+        {
+            if (DateTime.Now < entry.Expiry && entry.Data is T cachedVal)
+                return cachedVal;
+        }
+
+        var task = TaskCache.GetOrAdd(key, _ => FetchAndCacheAsync(key, fetchFunc));
+        try
+        {
+            var result = await task;
+            return (T)result;
+        }
+        finally
+        {
+            TaskCache.TryRemove(key, out _);
+        }
+    }
+
+    private static async Task<object> FetchAndCacheAsync<T>(string key, Func<Task<T>> fetchFunc)
+    {
+        var data = await fetchFunc();
+        Cache[key] = new CacheEntry<object>
+        {
+            Expiry = DateTime.Now.Add(CacheDurationLocal),
+            Data = data!
+        };
+
+        return data!;
+    }
+}
 
 public class SearchService
 {
@@ -132,47 +178,54 @@ public class SearchService
 
             var queryLower = query.ToLower();
 
-            if (uint.TryParse(query, out _))
+            var cacheKey = $"search:{queryLower}:{maxResults}";
+            var cached = await SteamApiCache.GetOrAddAsync(cacheKey, async () =>
             {
-                var url = $"https://store.steampowered.com/api/appdetails?appids={query}";
-                var response = await Client.GetStringAsync(url);
-                var json = JObject.Parse(response)[query];
-                if (json?["success"]?.Value<bool>() == true && json["data"] != null)
+                if (uint.TryParse(query, out _))
                 {
-                    var details = json["data"];
-                    var appName = details!["name"]?.ToString() ?? string.Empty;
-                    if (!string.IsNullOrWhiteSpace(appName))
+                    var url = $"https://store.steampowered.com/api/appdetails?appids={query}";
+                    var response = await Client.GetStringAsync(url);
+                    var json = JObject.Parse(response)[query];
+                    if (json?["success"]?.Value<bool>() == true && json["data"] != null)
                     {
-                        var result = new List<Game>
+                        var details = json["data"];
+                        var appName = details!["name"]?.ToString() ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(appName))
                         {
-                            new Game
+                            var result = new List<Game>
                             {
-                                AppId = query,
-                                Name = appName,
-                                Type = MapSteamTypeToDisplayType(details["type"]?.ToString() ?? "game")
-                            }
-                        };
-                        await FetchTypesForGamesAsync(result);
-                        return result;
+                                new Game
+                                {
+                                    AppId = query,
+                                    Name = appName,
+                                    Type = MapSteamTypeToDisplayType(details["type"]?.ToString() ?? "game")
+                                }
+                            };
+                            await FetchTypesForGamesAsync(result);
+                            return result;
+                        }
                     }
                 }
-            }
 
-            var matches = appList
-                .Select(app => (app, score: CalculateScore(app.Name, queryLower)))
-                .Where(x => x.score > 0)
-                .OrderByDescending(x => x.score)
-                .Take(maxResults)
-                .Select(x => new Game
-                {
-                    AppId = x.app.AppId,
-                    Name = x.app.Name,
-                    Type = "Game"
-                })
+                var matches = appList
+                    .Select(app => (app, score: CalculateScore(app.Name, queryLower)))
+                    .Where(x => x.score > 0)
+                    .OrderByDescending(x => x.score)
+                    .Take(maxResults)
+                    .Select(x => new Game
+                    {
+                        AppId = x.app.AppId,
+                        Name = x.app.Name,
+                        Type = "Game"
+                    })
+                    .ToList();
+
+                await FetchTypesForGamesAsync(matches);
+                return matches;
+            });
+
+            return cached.Select(g => new Game { AppId = g.AppId, Name = g.Name, Type = g.Type, IconUrl = g.IconUrl })
                 .ToList();
-
-            await FetchTypesForGamesAsync(matches);
-            return matches;
         }
         catch
         {
@@ -433,40 +486,46 @@ public class SearchService
 
     private static async Task<GameDetails> FetchGameDetailsAsync(string appId)
     {
-        try
+        var key = $"details:{appId}";
+        var result = await SteamApiCache.GetOrAddAsync(key, async () =>
         {
-            var url = string.Format(SteamAppDetailsUrl, appId);
-            var response = await Client.GetStringAsync(url);
-            var json = JObject.Parse(response)[appId];
-
-            if (json?["success"]?.Value<bool>() == true)
+            try
             {
-                var data = json["data"];
-                if (data != null)
+                var url = string.Format(SteamAppDetailsUrl, appId);
+                var response = await Client.GetStringAsync(url);
+                var json = JObject.Parse(response)[appId];
+
+                if (json?["success"]?.Value<bool>() == true)
                 {
-                    var rawType = data["type"]?.ToString().ToLower() ?? "game";
-                    var type = MapSteamTypeToDisplayType(rawType);
+                    var data = json["data"];
+                    if (data != null)
+                    {
+                        var rawType = data["type"]?.ToString().ToLower() ?? "game";
+                        var type = MapSteamTypeToDisplayType(rawType);
 
-                    var headerImage = data["header_image"]?.ToString();
-                    var capsuleImage = data["capsule_image"]?.ToString();
-                    var iconUrl = !string.IsNullOrEmpty(headerImage)
-                        ? headerImage
-                        : capsuleImage ?? string.Empty;
+                        var headerImage = data["header_image"]?.ToString();
+                        var capsuleImage = data["capsule_image"]?.ToString();
+                        var iconUrl = !string.IsNullOrEmpty(headerImage)
+                            ? headerImage
+                            : capsuleImage ?? string.Empty;
 
-                    if (!string.IsNullOrEmpty(iconUrl))
-                        return new GameDetails(type, iconUrl);
+                        if (!string.IsNullOrEmpty(iconUrl))
+                            return new GameDetails(type, iconUrl);
+                    }
                 }
-            }
 
-            var fallbackIconUrl = await TryGetCdnImageAsync(appId);
-            return new GameDetails("Game", fallbackIconUrl ?? string.Empty);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error fetching details for {appId}: {ex.Message}");
-            var fallbackIconUrl = await TryGetCdnImageAsync(appId);
-            return new GameDetails("Game", fallbackIconUrl ?? string.Empty);
-        }
+                var fallbackIconUrl = await TryGetCdnImageAsync(appId);
+                return new GameDetails("Game", fallbackIconUrl ?? string.Empty);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error fetching details for {appId}: {ex.Message}");
+                var fallbackIconUrl = await TryGetCdnImageAsync(appId);
+                return new GameDetails("Game", fallbackIconUrl ?? string.Empty);
+            }
+        });
+
+        return result;
     }
 
     private static async Task<string?> TryGetCdnImageAsync(string appId)
