@@ -6,51 +6,47 @@ namespace GreenLuma_Manager.Models;
 [DataContract]
 public class Game : INotifyPropertyChanged
 {
-    private string _iconUrl = string.Empty;
-    private bool _isEditing;
-    private string _name = string.Empty;
-
     [DataMember] public required string AppId { get; set; }
 
     [DataMember]
     public required string Name
     {
-        get => _name;
+        get;
         set
         {
-            if (_name != value)
+            if (field != value)
             {
-                _name = value;
+                field = value;
                 OnPropertyChanged(nameof(Name));
             }
         }
-    }
+    } = string.Empty;
 
     [DataMember] public required string Type { get; set; }
 
     [DataMember]
     public string IconUrl
     {
-        get => _iconUrl;
+        get;
         set
         {
-            if (_iconUrl != value)
+            if (field != value)
             {
-                _iconUrl = value;
+                field = value;
                 OnPropertyChanged(nameof(IconUrl));
             }
         }
-    }
+    } = string.Empty;
 
     [IgnoreDataMember]
     public bool IsEditing
     {
-        get => _isEditing;
+        get;
         set
         {
-            if (_isEditing != value)
+            if (field != value)
             {
-                _isEditing = value;
+                field = value;
                 OnPropertyChanged(nameof(IsEditing));
             }
         }
