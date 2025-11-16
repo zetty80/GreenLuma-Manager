@@ -127,11 +127,37 @@ public class SearchService
         try
         {
             var appList = await GetAppListAsync();
-
             if (appList.Count == 0)
                 return [];
 
             var queryLower = query.ToLower();
+
+            if (uint.TryParse(query, out _))
+            {
+                var url = $"https://store.steampowered.com/api/appdetails?appids={query}";
+                var response = await Client.GetStringAsync(url);
+                var json = JObject.Parse(response)[query];
+                if (json?["success"]?.Value<bool>() == true && json["data"] != null)
+                {
+                    var details = json["data"];
+                    var appName = details!["name"]?.ToString() ?? string.Empty;
+                    if (!string.IsNullOrWhiteSpace(appName))
+                    {
+                        var result = new List<Game>
+                        {
+                            new Game
+                            {
+                                AppId = query,
+                                Name = appName,
+                                Type = MapSteamTypeToDisplayType(details["type"]?.ToString() ?? "game")
+                            }
+                        };
+                        await FetchTypesForGamesAsync(result);
+                        return result;
+                    }
+                }
+            }
+
             var matches = appList
                 .Select(app => (app, score: CalculateScore(app.Name, queryLower)))
                 .Where(x => x.score > 0)
@@ -148,9 +174,8 @@ public class SearchService
             await FetchTypesForGamesAsync(matches);
             return matches;
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"Search error: {ex.Message}");
             return [];
         }
     }
