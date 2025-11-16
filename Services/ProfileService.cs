@@ -1,5 +1,5 @@
 ﻿using System.IO;
-using System.Runtime.Serialization.Json;
+using System.Text.Json;
 using System.Text;
 using GreenLuma_Manager.Models;
 using Newtonsoft.Json.Linq;
@@ -140,18 +140,19 @@ public class ProfileService
 
     private static Profile? DeserializeProfile(string json)
     {
-        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
-        var serializer = new DataContractJsonSerializer(typeof(Profile));
-        var obj = serializer.ReadObject(stream);
-        return obj as Profile;
+        try
+        {
+            return JsonSerializer.Deserialize<Profile>(json);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string SerializeProfile(Profile profile)
     {
-        using var stream = new MemoryStream();
-        var serializer = new DataContractJsonSerializer(typeof(Profile));
-        serializer.WriteObject(stream, profile);
-        return Encoding.UTF8.GetString(stream.ToArray());
+        return JsonSerializer.Serialize(profile);
     }
 
     private static string SanitizeFileName(string name)

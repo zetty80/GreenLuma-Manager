@@ -1,5 +1,5 @@
 ﻿using System.IO;
-using System.Runtime.Serialization.Json;
+using System.Text.Json;
 using System.Text;
 using GreenLuma_Manager.Models;
 using GreenLuma_Manager.Utilities;
@@ -58,9 +58,7 @@ public class ConfigService
     {
         try
         {
-            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
-            var serializer = new DataContractJsonSerializer(typeof(Config));
-            return (Config?)serializer.ReadObject(stream);
+            return JsonSerializer.Deserialize<Config>(json);
         }
         catch
         {
@@ -120,10 +118,7 @@ public class ConfigService
 
     private static string SerializeConfig(Config config)
     {
-        using var stream = new MemoryStream();
-        var serializer = new DataContractJsonSerializer(typeof(Config));
-        serializer.WriteObject(stream, config);
-        return Encoding.UTF8.GetString(stream.ToArray());
+        return JsonSerializer.Serialize(config);
     }
 
     public static void WipeData()

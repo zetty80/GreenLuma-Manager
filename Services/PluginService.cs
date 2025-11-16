@@ -1,6 +1,6 @@
 ﻿using System.IO;
 using System.Runtime.Loader;
-using System.Runtime.Serialization.Json;
+using System.Text.Json;
 using System.Text;
 using GreenLuma_Manager.Models;
 using GreenLuma_Manager.Plugins;
@@ -52,11 +52,8 @@ public class PluginService
         try
         {
             if (!File.Exists(PluginsConfigPath)) return [];
-
             var json = File.ReadAllText(PluginsConfigPath, Encoding.UTF8);
-            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
-            var serializer = new DataContractJsonSerializer(typeof(List<PluginInfo>));
-            return (List<PluginInfo>?)serializer.ReadObject(stream) ?? [];
+            return JsonSerializer.Deserialize<List<PluginInfo>>(json) ?? [];
         }
         catch
         {
@@ -68,10 +65,7 @@ public class PluginService
     {
         try
         {
-            using var stream = new MemoryStream();
-            var serializer = new DataContractJsonSerializer(typeof(List<PluginInfo>));
-            serializer.WriteObject(stream, _pluginInfos);
-            var json = Encoding.UTF8.GetString(stream.ToArray());
+            var json = JsonSerializer.Serialize(_pluginInfos);
             File.WriteAllText(PluginsConfigPath, json, Encoding.UTF8);
         }
         catch
@@ -284,9 +278,7 @@ public class PluginService
         {
             if (!File.Exists(PendingDeletesPath)) return new List<string>();
             var json = File.ReadAllText(PendingDeletesPath, Encoding.UTF8);
-            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
-            var serializer = new DataContractJsonSerializer(typeof(List<string>));
-            return (List<string>?)serializer.ReadObject(stream) ?? new List<string>();
+            return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
         }
         catch
         {
@@ -298,10 +290,7 @@ public class PluginService
     {
         try
         {
-            using var stream = new MemoryStream();
-            var serializer = new DataContractJsonSerializer(typeof(List<string>));
-            serializer.WriteObject(stream, paths);
-            var json = Encoding.UTF8.GetString(stream.ToArray());
+            var json = JsonSerializer.Serialize(paths);
             File.WriteAllText(PendingDeletesPath, json, Encoding.UTF8);
         }
         catch
