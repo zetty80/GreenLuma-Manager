@@ -4,7 +4,7 @@ A modern desktop app for managing your GreenLuma AppList. No more entering app I
 
 ![Version](https://img.shields.io/github/v/release/3vil3vo/GreenLuma-Manager?label=version)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![.NET](https://img.shields.io/badge/.NET-8.0-purple)
+![.NET](https://img.shields.io/badge/.NET-10.0-purple)
 
 ## Features
 
@@ -30,7 +30,7 @@ A modern desktop app for managing your GreenLuma AppList. No more entering app I
 
 #### Prerequisites
 - Visual Studio 2022 or later
-- .NET 8.0 or higher
+- .NET 10.0 or higher
 
 #### Steps
 
@@ -76,7 +76,7 @@ A modern desktop app for managing your GreenLuma AppList. No more entering app I
 ## Requirements
 
 - Windows 10/11
-- .NET 8.0 or higher
+- .NET 10.0 or higher
 - Steam installed
 - GreenLuma 2025 installed
 

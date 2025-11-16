@@ -12,7 +12,7 @@ Thank you for your interest in contributing to GreenLuma Manager!
 
 2. **Open in Visual Studio**
    - Open `GreenLuma-Manager.slnx` in Visual Studio 2022 or later
-   - Ensure you have .NET 8.0 SDK installed
+   - Ensure you have .NET 10.0 SDK installed
 
 3. **Restore NuGet packages**
    - Right-click the solution in Solution Explorer
