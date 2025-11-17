@@ -19,7 +19,7 @@ namespace GreenLuma_Manager;
 
 public partial class MainWindow
 {
-    public const string Version = "RC2.3";
+    public const string Version = "RC2.4";
 
     private readonly ObservableCollection<Game> _games;
     private readonly ObservableCollection<string> _profiles;
