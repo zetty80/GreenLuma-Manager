@@ -154,59 +154,6 @@
                     </Trigger>
                 </Style.Triggers>
             </Style>
-            <Style TargetType="{x:Type CheckBox}">
-                <Setter Property="Foreground" Value="{StaticResource TextSecond}" />
-                <Setter Property="FontSize" Value="14" />
-                <Setter Property="Padding" Value="12,0,0,0" />
-                <Setter Property="VerticalContentAlignment" Value="Center" />
-                <Setter Property="Cursor" Value="Hand" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="{x:Type CheckBox}">
-                            <Grid Background="#00FFFFFF">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Border
-                                    Name="CheckBoxBorder"
-                                    Width="24"
-                                    Height="24"
-                                    Background="{StaticResource SurfaceBg}"
-                                    BorderBrush="{StaticResource Border}"
-                                    BorderThickness="2"
-                                    CornerRadius="6">
-                                    <Path
-                                        Name="CheckMark"
-                                        Width="14"
-                                        Height="14"
-                                        Data="M20.285,2 L9,13.567 L3.7140000000000004,8.556000000000001 L4.440892098500626E-16,12.272000000000002 L9,21 L24,5.715"
-                                        Fill="{StaticResource Accent}"
-                                        Stretch="Uniform"
-                                        Visibility="Collapsed" />
-                                </Border>
-                                <ContentPresenter
-                                    Grid.Column="1"
-                                    Margin="{TemplateBinding Padding}"
-                                    HorizontalAlignment="Left"
-                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                            </Grid>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="ToggleButton.IsChecked" Value="True">
-                                    <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
-                                </Trigger>
-                                <Trigger Property="UIElement.IsMouseOver" Value="True">
-                                    <Setter TargetName="CheckBoxBorder" Property="BorderBrush"
-                                            Value="{StaticResource TextTert}" />
-                                </Trigger>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="UIElement.Opacity" Value="0.5" />
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
             <Style TargetType="{x:Type ToolTip}">
                 <Setter Property="Background" Value="{StaticResource SurfaceBg}" />
                 <Setter Property="Foreground" Value="{StaticResource Text}" />
@@ -297,9 +244,68 @@
         </Border>
         <ScrollViewer
             Grid.Row="1"
-            Margin="30,20,30,0"
-            VerticalScrollBarVisibility="Hidden">
-            <StackPanel Margin="0,0,0,30">
+            Margin="30,20,0,0"
+            VerticalScrollBarVisibility="Auto">
+            <ScrollViewer.Resources>
+                <ResourceDictionary>
+                    <Style TargetType="{x:Type CheckBox}">
+                        <Setter Property="Foreground" Value="{StaticResource TextSecond}" />
+                        <Setter Property="FontSize" Value="14" />
+                        <Setter Property="Padding" Value="12,0,0,0" />
+                        <Setter Property="VerticalContentAlignment" Value="Center" />
+                        <Setter Property="Cursor" Value="Hand" />
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="{x:Type CheckBox}">
+                                    <Grid Background="#00FFFFFF">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Border
+                                            Name="CheckBoxBorder"
+                                            Width="24"
+                                            Height="24"
+                                            Background="{StaticResource SurfaceBg}"
+                                            BorderBrush="{StaticResource Border}"
+                                            BorderThickness="2"
+                                            CornerRadius="6">
+                                            <Path
+                                                Name="CheckMark"
+                                                Width="14"
+                                                Height="14"
+                                                Data="M20.285,2 L9,13.567 L3.7140000000000004,8.556000000000001 L4.440892098500626E-16,12.272000000000002 L9,21 L24,5.715"
+                                                Fill="{StaticResource Accent}"
+                                                Stretch="Uniform"
+                                                Visibility="Collapsed" />
+                                        </Border>
+                                        <ContentPresenter
+                                            Grid.Column="1"
+                                            Margin="{TemplateBinding Padding}"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="ToggleButton.IsChecked" Value="True">
+                                            <Setter TargetName="CheckMark" Property="Visibility" Value="Visible" />
+                                        </Trigger>
+                                        <Trigger Property="UIElement.IsMouseOver" Value="True">
+                                            <Setter TargetName="CheckBoxBorder" Property="BorderBrush" Value="{StaticResource TextTert}" />
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="UIElement.Opacity" Value="0.5" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                    <ResourceDictionary.MergedDictionaries>
+                        <ResourceDictionary Source="pack://application:,,,/PresentationFramework.Fluent;component/Themes/Fluent.Dark.xaml" />
+                    </ResourceDictionary.MergedDictionaries>
+                </ResourceDictionary>
+            </ScrollViewer.Resources>
+            <StackPanel Margin="0,0,30,30">
                 <Border
                     Margin="0,0,0,16"
                     Padding="24"
