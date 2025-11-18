@@ -1145,8 +1145,8 @@ public partial class MainWindow
 
                 if (generatedCount > 0)
                 {
-                    var gameWord = generatedCount == 1 ? "game" : "games";
-                    ShowToast($"Generated AppList with {generatedCount} {gameWord}");
+                    var itemWord = generatedCount == 1 ? "item" : "items";
+                    ShowToast($"Generated AppList with {generatedCount} {itemWord}");
                 }
                 else
                 {
