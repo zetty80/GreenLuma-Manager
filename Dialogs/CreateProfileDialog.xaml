@@ -10,7 +10,7 @@
     WindowStartupLocation="CenterOwner">
 
     <WindowChrome.WindowChrome>
-        <WindowChrome CaptionHeight="40" UseAeroCaptionButtons="False" />
+        <WindowChrome CaptionHeight="0" UseAeroCaptionButtons="False" />
     </WindowChrome.WindowChrome>
 
     <FrameworkElement.Resources>
@@ -21,6 +21,7 @@
             <SolidColorBrush x:Key="Accent" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="Text" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="TextSecond" Color="#FFAAAAAA" />
+            <SolidColorBrush x:Key="TextTert" Color="#FF666666" />
             <Style x:Key="LabelTxt" TargetType="{x:Type TextBlock}">
                 <Setter Property="FontSize" Value="13" />
                 <Setter Property="Foreground" Value="{StaticResource TextSecond}" />
@@ -94,98 +95,108 @@
                 TargetType="{x:Type Button}">
                 <Setter Property="Background" Value="{StaticResource SurfaceBg}" />
                 <Setter Property="Foreground" Value="{StaticResource Text}" />
+                <Setter Property="BorderBrush" Value="{StaticResource Border}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type Button}">
+                            <Border
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
                 <Style.Triggers>
                     <Trigger Property="UIElement.IsMouseOver" Value="True">
                         <Setter Property="Background" Value="#FF1E1E1E" />
+                        <Setter Property="BorderBrush" Value="{StaticResource TextTert}" />
                     </Trigger>
                 </Style.Triggers>
             </Style>
         </ResourceDictionary>
     </FrameworkElement.Resources>
-    <Border
-        BorderBrush="{StaticResource Border}"
-        BorderThickness="1"
-        CornerRadius="12">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="60" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <Border
-                Grid.Row="0"
-                Background="{StaticResource DarkBg}"
-                BorderBrush="{StaticResource Border}"
-                BorderThickness="0,0,0,1"
-                CornerRadius="12,12,0,0"
-                MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <Grid Margin="30,0">
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        FontSize="16"
-                        FontWeight="Bold"
-                        Foreground="{StaticResource Text}"
-                        Text="CREATE PROFILE" />
-                    <Button
-                        Width="32"
-                        Height="32"
-                        HorizontalAlignment="Right"
-                        Background="#00FFFFFF"
-                        BorderThickness="0"
-                        Click="Cancel_Click"
-                        Content="✕"
-                        Cursor="Hand"
-                        FontSize="18"
-                        Foreground="{StaticResource TextSecond}">
-                        <Control.Template>
-                            <ControlTemplate TargetType="{x:Type Button}">
-                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                </Border>
-                            </ControlTemplate>
-                        </Control.Template>
-                        <FrameworkElement.Style>
-                            <Style TargetType="{x:Type Button}">
-                                <Setter Property="Background" Value="#00FFFFFF" />
-                                <Style.Triggers>
-                                    <Trigger Property="UIElement.IsMouseOver" Value="True">
-                                        <Setter Property="Background" Value="#FF2A2A2A" />
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </FrameworkElement.Style>
-                    </Button>
-                </Grid>
-            </Border>
-            <StackPanel Grid.Row="1" Margin="30,24,30,0">
-                <TextBlock Style="{StaticResource LabelTxt}" Text="Profile Name" />
-                <TextBox
-                    Name="TxtProfileName"
-                    KeyDown="ProfileName_KeyDown"
-                    PreviewTextInput="ProfileName_PreviewTextInput"
-                    Style="{StaticResource InputBox}" />
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="60" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Border
+            Grid.Row="0"
+            Background="{StaticResource DarkBg}"
+            BorderBrush="{StaticResource Border}"
+            BorderThickness="0,0,0,1"
+            MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+            <Grid Margin="30,0">
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="16"
+                    FontWeight="Bold"
+                    Foreground="{StaticResource Text}"
+                    Text="CREATE PROFILE" />
+                <Button
+                    Width="32"
+                    Height="32"
+                    HorizontalAlignment="Right"
+                    Background="#00FFFFFF"
+                    BorderThickness="0"
+                    Click="Cancel_Click"
+                    Content="✕"
+                    Cursor="Hand"
+                    FontSize="18"
+                    Foreground="{StaticResource TextSecond}">
+                    <Control.Template>
+                        <ControlTemplate TargetType="{x:Type Button}">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </ControlTemplate>
+                    </Control.Template>
+                    <FrameworkElement.Style>
+                        <Style TargetType="{x:Type Button}">
+                            <Setter Property="Background" Value="#00FFFFFF" />
+                            <Style.Triggers>
+                                <Trigger Property="UIElement.IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#FF2A2A2A" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </FrameworkElement.Style>
+                </Button>
+            </Grid>
+        </Border>
+        <StackPanel Grid.Row="1" Margin="30,24,30,0">
+            <TextBlock Style="{StaticResource LabelTxt}" Text="Profile Name" />
+            <TextBox
+                Name="TxtProfileName"
+                KeyDown="ProfileName_KeyDown"
+                PreviewTextInput="ProfileName_PreviewTextInput"
+                Style="{StaticResource InputBox}" />
+        </StackPanel>
+        <Border
+            Grid.Row="2"
+            Padding="30,20"
+            Background="{StaticResource SurfaceBg}"
+            BorderBrush="{StaticResource Border}"
+            BorderThickness="0,1,0,0">
+            <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button
+                    MinWidth="160"
+                    Click="Ok_Click"
+                    Content="CREATE PROFILE"
+                    Style="{StaticResource PrimaryBtn}" />
+                <Button
+                    MinWidth="100"
+                    Margin="12,0,0,0"
+                    Click="Cancel_Click"
+                    Content="CANCEL"
+                    Style="{StaticResource SecondBtn}" />
             </StackPanel>
-            <Border
-                Grid.Row="2"
-                Padding="30,20"
-                Background="{StaticResource SurfaceBg}"
-                BorderBrush="{StaticResource Border}"
-                BorderThickness="0,1,0,0"
-                CornerRadius="0,0,12,12">
-                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
-                    <Button
-                        MinWidth="160"
-                        Click="Ok_Click"
-                        Content="CREATE PROFILE"
-                        Style="{StaticResource PrimaryBtn}" />
-                    <Button
-                        MinWidth="100"
-                        Margin="12,0,0,0"
-                        Click="Cancel_Click"
-                        Content="CANCEL"
-                        Style="{StaticResource SecondBtn}" />
-                </StackPanel>
-            </Border>
-        </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </Window>
