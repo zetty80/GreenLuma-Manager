@@ -1139,14 +1139,30 @@ public partial class MainWindow
             {
                 SaveCurrentProfile();
 
-                if (_config != null && await GreenLumaService.GenerateAppListAsync(_currentProfile, _config))
+                var totalAppIds = await GreenLumaService.GenerateAppListAsync(_currentProfile, _config);
+
+                var generatedCount = Math.Min(totalAppIds, GreenLumaService.AppListLimit);
+
+                if (generatedCount > 0)
                 {
-                    var gameWord = _games.Count == 1 ? "game" : "games";
-                    ShowToast($"Generated AppList with {_games.Count} {gameWord}");
+                    var gameWord = generatedCount == 1 ? "game" : "games";
+                    ShowToast($"Generated AppList with {generatedCount} {gameWord}");
                 }
                 else
                 {
                     ShowToast("Failed to generate AppList - check paths in settings", false);
+                }
+
+                if (totalAppIds > GreenLumaService.AppListLimit)
+                {
+                    var droppedCount = totalAppIds - GreenLumaService.AppListLimit;
+                    CustomMessageBox.Show(
+                        $"Warning: Your profile lists {totalAppIds} item(s), but GreenLuma is limited to {GreenLumaService.AppListLimit} entries.\n\n" +
+                        $"{droppedCount} item(s) were excluded from the generated AppList.\n\n" +
+                        "Consider creating a smaller profile for the games you intend to launch.",
+                        "AppList Truncated",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Exclamation);
                 }
             }
             catch (Exception ex)
@@ -1336,6 +1352,7 @@ public partial class MainWindow
         }
         catch
         {
+            // ignored
             return;
         }
 

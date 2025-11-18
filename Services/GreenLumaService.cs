@@ -8,6 +8,7 @@ namespace GreenLuma_Manager.Services;
 public partial class GreenLumaService
 {
     private const int ProcessKillTimeoutMs = 5000;
+    public const int AppListLimit = 133;
     private static readonly string[] SteamProcessNames = ["steam", "steamwebhelper", "steamerrorfilereporter"];
 
     [GeneratedRegex(@"[A-Za-z]:\\[^""\r\n]+?\.dll", RegexOptions.IgnoreCase)]
@@ -24,10 +25,10 @@ public partial class GreenLumaService
                Directory.GetFiles(appListPath, "*.txt").Length > 0;
     }
 
-    public static async Task<bool> GenerateAppListAsync(Profile? profile, Config? config)
+    public static async Task<int> GenerateAppListAsync(Profile? profile, Config? config)
     {
         if (profile == null || config == null || string.IsNullOrWhiteSpace(config.GreenLumaPath))
-            return false;
+            return 0;
 
         try
         {
@@ -45,17 +46,22 @@ public partial class GreenLumaService
                 allAppIds.AddRange(game.Depots);
             }
 
-            for (var i = 0; i < allAppIds.Count; i++)
+            var totalCount = allAppIds.Count;
+
+            var limitedAppIds = allAppIds.Take(AppListLimit).ToList();
+
+            for (var i = 0; i < limitedAppIds.Count; i++)
             {
                 var filePath = Path.Combine(appListPath, $"{i}.txt");
-                await File.WriteAllTextAsync(filePath, allAppIds[i]);
+                await File.WriteAllTextAsync(filePath, limitedAppIds[i]);
             }
 
-            return true;
+            return totalCount;
         }
         catch
         {
-            return false;
+            // ignored
+            return 0;
         }
     }
 
@@ -74,6 +80,7 @@ public partial class GreenLumaService
             }
             catch
             {
+                // ignored
                 return false;
             }
         });
@@ -171,6 +178,7 @@ public partial class GreenLumaService
         }
         catch
         {
+            // ignored
             return false;
         }
     }
@@ -277,6 +285,7 @@ public partial class GreenLumaService
                 }
                 catch
                 {
+                    // ignored
                     rooted = false;
                 }
 
