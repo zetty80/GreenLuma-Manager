@@ -361,9 +361,12 @@ public partial class MainWindow
         if (token.IsCancellationRequested)
             return;
 
-        DisplaySearchResults(results);
-
         await SearchService.FetchIconUrlsAsync(results);
+
+        if (token.IsCancellationRequested)
+            return;
+
+        DisplaySearchResults(results);
     }
 
     private void ShowSearchLoading()

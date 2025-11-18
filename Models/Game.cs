@@ -22,7 +22,19 @@ public class Game : INotifyPropertyChanged
         }
     } = string.Empty;
 
-    [DataMember] public required string Type { get; set; }
+    [DataMember]
+    public required string Type
+    {
+        get;
+        set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged(nameof(Type));
+            }
+        }
+    }
 
     [DataMember]
     public string IconUrl
