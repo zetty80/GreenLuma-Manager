@@ -2,6 +2,7 @@
 using System.Net.Http;
 using GreenLuma_Manager.Models;
 using Newtonsoft.Json.Linq;
+using SteamKit2;
 
 namespace GreenLuma_Manager.Services;
 
@@ -50,14 +51,11 @@ public static class SteamApiCache
 
 public class SearchService
 {
-    private const string SteamAppListUrl = "https://api.steampowered.com/ISteamApps/GetAppList/v2/";
-
     private const string SteamStoreSearchUrl =
         "https://store.steampowered.com/api/storesearch/?term={0}&l=english&cc=US";
 
     private const string SteamStoreApiUrl = "https://api.steampowered.com/IStoreService/GetAppList/v1/";
     private const string SteamApiKey = "1DD0450A99F573693CD031EBB160907D";
-    private const string SteamAppDetailsUrl = "https://store.steampowered.com/api/appdetails?appids={0}&l=english";
 
     private const int MaxConcurrentRequests = 8;
     private static readonly HttpClient Client = new();
@@ -65,7 +63,8 @@ public class SearchService
     private static readonly Dictionary<string, GameDetails> DetailsCache = [];
     private static DateTime _cacheExpiry = DateTime.MinValue;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(24);
-    private static bool _useV2Api = true;
+
+    private static readonly SteamManager Manager = new();
 
     static SearchService()
     {
@@ -115,79 +114,51 @@ public class SearchService
         if (_appListCache != null && DateTime.Now < _cacheExpiry)
             return _appListCache;
 
-        if (_useV2Api)
-            try
+        try
+        {
+            _appListCache = [];
+            uint lastAppId = 0;
+            const int maxResults = 50000;
+
+            while (true)
             {
-                var response = await Client.GetStringAsync(SteamAppListUrl);
+                var url =
+                    $"{SteamStoreApiUrl}?key={SteamApiKey}&include_games=true&include_dlc=true&include_software=true&include_videos=true&include_hardware=true&max_results={maxResults}&last_appid={lastAppId}";
+
+                var response = await Client.GetStringAsync(url);
                 var json = JObject.Parse(response);
-                var apps = json["applist"]?["apps"];
+                var apps = json["response"]?["apps"];
 
-                if (apps != null)
+                if (apps == null || !apps.Any())
+                    break;
+
+                foreach (var app in apps)
                 {
-                    _appListCache =
-                    [
-                        .. apps
-                            .Select(app => new SteamApp(
-                                app["appid"]?.ToString() ?? string.Empty,
-                                app["name"]?.ToString() ?? string.Empty))
-                            .Where(app => !string.IsNullOrWhiteSpace(app.AppId) && !string.IsNullOrWhiteSpace(app.Name))
-                    ];
+                    var appId = app["appid"]?.ToString() ?? string.Empty;
+                    var name = app["name"]?.ToString() ?? string.Empty;
 
-                    _cacheExpiry = DateTime.Now.Add(CacheDuration);
-                    return _appListCache;
-                }
-            }
-            catch
-            {
-                _useV2Api = false;
-            }
-
-        if (!_useV2Api)
-            try
-            {
-                _appListCache = [];
-                uint lastAppId = 0;
-                const int maxResults = 50000;
-
-                while (true)
-                {
-                    var url =
-                        $"{SteamStoreApiUrl}?key={SteamApiKey}&include_games=true&include_dlc=true&include_software=true&include_videos=true&include_hardware=true&max_results={maxResults}&last_appid={lastAppId}";
-
-                    var response = await Client.GetStringAsync(url);
-                    var json = JObject.Parse(response);
-                    var apps = json["response"]?["apps"];
-
-                    if (apps == null || !apps.Any())
-                        break;
-
-                    foreach (var app in apps)
-                    {
-                        var appId = app["appid"]?.ToString() ?? string.Empty;
-                        var name = app["name"]?.ToString() ?? string.Empty;
-
-                        if (!string.IsNullOrWhiteSpace(appId) && !string.IsNullOrWhiteSpace(name))
-                            _appListCache.Add(new SteamApp(appId, name));
-                    }
-
-                    var haveMore = json["response"]?["have_more_results"]?.Value<bool>() ?? false;
-                    if (!haveMore)
-                        break;
-
-                    var lastAppIdFromResponse = json["response"]?["last_appid"]?.Value<uint>();
-                    if (lastAppIdFromResponse.HasValue)
-                        lastAppId = lastAppIdFromResponse.Value;
-                    else
-                        break;
+                    if (!string.IsNullOrWhiteSpace(appId) && !string.IsNullOrWhiteSpace(name))
+                        _appListCache.Add(new SteamApp(appId, name));
                 }
 
-                _cacheExpiry = DateTime.Now.Add(CacheDuration);
-                return _appListCache;
+                var haveMore = json["response"]?["have_more_results"]?.Value<bool>() ?? false;
+                if (!haveMore)
+                    break;
+
+                var lastAppIdFromResponse = json["response"]?["last_appid"]?.Value<uint>();
+                if (lastAppIdFromResponse.HasValue)
+                    lastAppId = lastAppIdFromResponse.Value;
+                else
+                    break;
             }
-            catch
-            {
-                // ignored
-            }
+
+            _cacheExpiry = DateTime.Now.Add(CacheDuration);
+            return _appListCache;
+        }
+        catch
+        {
+            // ignored
+        }
 
         return _appListCache ?? [];
     }
@@ -206,24 +177,18 @@ public class SearchService
             {
                 if (uint.TryParse(query, out _))
                 {
-                    var url = $"https://store.steampowered.com/api/appdetails?appids={query}";
-                    var response = await Client.GetStringAsync(url);
-                    var json = JObject.Parse(response)[query];
-                    if (json?["success"]?.Value<bool>() == true && json["data"] != null)
-                    {
-                        var details = json["data"];
-                        var appName = details!["name"]?.ToString() ?? string.Empty;
-                        if (!string.IsNullOrWhiteSpace(appName))
-                            return
-                            [
-                                new Game
-                                {
-                                    AppId = query,
-                                    Name = appName,
-                                    Type = MapSteamTypeToDisplayType(details["type"]?.ToString() ?? "game")
-                                }
-                            ];
-                    }
+                    var details = await FetchGameDetailsAsync(query);
+                    if (!string.IsNullOrEmpty(details.Name) && details.Name != $"App {query}")
+                        return
+                        [
+                            new Game
+                            {
+                                AppId = query,
+                                Name = details.Name,
+                                Type = details.Type,
+                                IconUrl = details.IconUrl
+                            }
+                        ];
                 }
 
                 var storeTask = SearchStoreAsync(query);
@@ -435,38 +400,22 @@ public class SearchService
         var key = $"details:{appId}";
         return await SteamApiCache.GetOrAddAsync(key, async () =>
         {
-            try
+            if (!uint.TryParse(appId, out var id))
+                return new GameDetails("Game", string.Empty, $"App {appId}");
+
+            var info = await Manager.GetAppInfoAsync(id);
+
+            if (info != null)
             {
-                var url = string.Format(SteamAppDetailsUrl, appId);
-                var response = await Client.GetStringAsync(url);
-                var json = JObject.Parse(response)[appId];
+                var iconUrl = !string.IsNullOrEmpty(info.IconUrl)
+                    ? info.IconUrl
+                    : await TryGetCdnImageAsync(appId);
 
-                if (json?["success"]?.Value<bool>() == true)
-                {
-                    var data = json["data"];
-                    if (data != null)
-                    {
-                        var rawType = data["type"]?.ToString().ToLower() ?? "game";
-                        var type = MapSteamTypeToDisplayType(rawType);
-                        var name = data["name"]?.ToString() ?? $"App {appId}";
-
-                        var headerImage = data["header_image"]?.ToString();
-                        var capsuleImage = data["capsule_image"]?.ToString();
-                        var iconUrl = !string.IsNullOrEmpty(headerImage) ? headerImage : capsuleImage ?? string.Empty;
-
-                        if (!string.IsNullOrEmpty(iconUrl))
-                            return new GameDetails(type, iconUrl, name);
-                    }
-                }
-
-                var fallbackIconUrl = await TryGetCdnImageAsync(appId);
-                return new GameDetails("Game", fallbackIconUrl ?? string.Empty, $"App {appId}");
+                return new GameDetails(info.Type, iconUrl ?? string.Empty, info.Name);
             }
-            catch
-            {
-                var fallbackIconUrl = await TryGetCdnImageAsync(appId);
-                return new GameDetails("Game", fallbackIconUrl ?? string.Empty, $"App {appId}");
-            }
+
+            var fallbackIconUrl = await TryGetCdnImageAsync(appId);
+            return new GameDetails("Game", fallbackIconUrl ?? string.Empty, $"App {appId}");
         });
     }
 
@@ -479,11 +428,14 @@ public class SearchService
             $"https://cdn.cloudflare.steamstatic.com/steam/apps/{appId}/capsule_231x87.jpg"
         ];
 
+        using var client = new HttpClient();
+        client.Timeout = TimeSpan.FromSeconds(2);
+
         foreach (var url in cdnUrls)
             try
             {
                 var head = new HttpRequestMessage(HttpMethod.Head, url);
-                var headResp = await Client.SendAsync(head);
+                var headResp = await client.SendAsync(head);
                 if (headResp.IsSuccessStatusCode)
                     return url;
             }
@@ -497,7 +449,7 @@ public class SearchService
 
     private static string MapSteamTypeToDisplayType(string steamType)
     {
-        return steamType switch
+        return steamType.ToLower() switch
         {
             "game" => "Game",
             "dlc" => "DLC",
@@ -546,5 +498,134 @@ public class SearchService
         public string Type { get; } = type;
         public string IconUrl { get; } = iconUrl;
         public string Name { get; } = name;
+    }
+
+    private class SteamManager : IDisposable
+    {
+        private readonly Task _callbackLoop;
+        private readonly CallbackManager _callbackManager;
+
+        private readonly TaskCompletionSource _connectedTcs;
+        private readonly CancellationTokenSource _cts;
+        private readonly TaskCompletionSource _loggedOnTcs;
+        private readonly SteamApps _steamApps;
+        private readonly SteamClient _steamClient;
+        private readonly SteamUser _steamUser;
+
+        private bool _isConnected;
+        private bool _isLoggedOn;
+        private bool _isRunning;
+
+        public SteamManager()
+        {
+            _steamClient = new SteamClient();
+            _callbackManager = new CallbackManager(_steamClient);
+            _steamUser = _steamClient.GetHandler<SteamUser>()!;
+            _steamApps = _steamClient.GetHandler<SteamApps>()!;
+
+            _cts = new CancellationTokenSource();
+            _connectedTcs = new TaskCompletionSource();
+            _loggedOnTcs = new TaskCompletionSource();
+
+            _callbackManager.Subscribe<SteamClient.ConnectedCallback>(OnConnected);
+            _callbackManager.Subscribe<SteamClient.DisconnectedCallback>(OnDisconnected);
+            _callbackManager.Subscribe<SteamUser.LoggedOnCallback>(OnLoggedOn);
+
+            _isRunning = true;
+            _callbackLoop = Task.Run(CallbackLoop);
+
+            _steamClient.Connect();
+        }
+
+        public void Dispose()
+        {
+            _isRunning = false;
+            _cts.Cancel();
+            _steamClient.Disconnect();
+            _callbackLoop.Wait(1000);
+            _cts.Dispose();
+        }
+
+        public async Task<GameDetails?> GetAppInfoAsync(uint appId)
+        {
+            try
+            {
+                await EnsureReadyAsync();
+
+                var request = new SteamApps.PICSRequest { ID = appId, AccessToken = 0 };
+                var job = _steamApps.PICSGetProductInfo(new List<SteamApps.PICSRequest> { request }, []);
+                var result = await job.ToTask();
+
+                if (result.Failed || result.Results == null)
+                    return null;
+
+                foreach (var callback in result.Results)
+                    if (callback.Apps.TryGetValue(appId, out var appData))
+                    {
+                        var kv = appData.KeyValues;
+                        var common = kv["common"];
+                        var name = common["name"].Value;
+                        var type = common["type"].Value ?? "Game";
+
+                        var headerImage = common["header_image"].Value;
+                        var iconUrl = !string.IsNullOrEmpty(headerImage)
+                            ? headerImage
+                            : $"https://cdn.cloudflare.steamstatic.com/steam/apps/{appId}/header.jpg";
+
+                        return new GameDetails(MapSteamTypeToDisplayType(type), iconUrl, name ?? $"App {appId}");
+                    }
+
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private async Task EnsureReadyAsync()
+        {
+            if (!_isConnected)
+                await _connectedTcs.Task;
+
+            if (!_isLoggedOn)
+                await _loggedOnTcs.Task;
+        }
+
+        private async Task CallbackLoop()
+        {
+            while (_isRunning && !_cts.Token.IsCancellationRequested)
+            {
+                _callbackManager.RunWaitCallbacks(TimeSpan.FromMilliseconds(100));
+                await Task.Delay(100);
+            }
+        }
+
+        private void OnConnected(SteamClient.ConnectedCallback callback)
+        {
+            _isConnected = true;
+            _connectedTcs.TrySetResult();
+            _steamUser.LogOnAnonymous();
+        }
+
+        private void OnDisconnected(SteamClient.DisconnectedCallback callback)
+        {
+            _isConnected = false;
+            _isLoggedOn = false;
+
+            Task.Delay(TimeSpan.FromSeconds(5)).ContinueWith(_ =>
+            {
+                if (_isRunning) _steamClient.Connect();
+            });
+        }
+
+        private void OnLoggedOn(SteamUser.LoggedOnCallback callback)
+        {
+            if (callback.Result == EResult.OK)
+            {
+                _isLoggedOn = true;
+                _loggedOnTcs.TrySetResult();
+            }
+        }
     }
 }
