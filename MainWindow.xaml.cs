@@ -1570,11 +1570,13 @@ public partial class MainWindow
         if (e.Key == Key.Enter)
         {
             CommitNameEdit(game, textBox.Text);
+            Keyboard.ClearFocus();
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)
         {
             CancelNameEdit(game);
+            Keyboard.ClearFocus();
             e.Handled = true;
         }
     }
