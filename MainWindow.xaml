@@ -1764,7 +1764,7 @@
                                                                         FontWeight="Medium"
                                                                         Foreground="{StaticResource Text}"
                                                                         KeyDown="GameNameEdit_KeyDown"
-                                                                        Loaded="GameNameEdit_Loaded"
+                                                                        IsVisibleChanged="GameNameEdit_IsVisibleChanged" 
                                                                         LostFocus="GameNameEdit_LostFocus"
                                                                         Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
                                                                 </Border>

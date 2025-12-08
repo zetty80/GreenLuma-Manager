@@ -1553,13 +1553,14 @@ public partial class MainWindow
         e.Handled = true;
     }
 
-    private void GameNameEdit_Loaded(object sender, RoutedEventArgs e)
+    private void GameNameEdit_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (sender is TextBox textBox)
-        {
-            textBox.Focus();
-            textBox.SelectAll();
-        }
+        if (sender is TextBox textBox && textBox.Visibility == Visibility.Visible)
+            Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+            {
+                textBox.Focus();
+                textBox.SelectAll();
+            }));
     }
 
     private void GameNameEdit_KeyDown(object sender, KeyEventArgs e)
