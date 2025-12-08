@@ -1589,6 +1589,9 @@
                                     </ScrollViewer.Resources>
 
                                     <ItemsControl x:Name="LstGames" Margin="12">
+                                        <ItemsControl.Resources>
+                                            <Style TargetType="TextBox" />
+                                        </ItemsControl.Resources>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type models:Game}">
                                                 <Border
