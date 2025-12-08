@@ -29,6 +29,7 @@ public partial class MainWindow
     private Profile? _currentProfile;
     private string? _editingOriginalName;
     private DispatcherTimer? _loadingDotsTimer;
+    private CancellationTokenSource? _profileLoadCts;
     private CancellationTokenSource? _searchCts;
 
     public MainWindow()
@@ -115,15 +116,15 @@ public partial class MainWindow
             if (_config?.DisableUpdateCheck == true)
                 return;
 
-            var updateInfo = await UpdateService.CheckForUpdatesAsync();
-            if (updateInfo?.UpdateAvailable == true) await HandleUpdateAvailable(updateInfo);
+            var updateInfo = await UpdateService.CheckForUpdatesAsync().ConfigureAwait(false);
+            if (updateInfo?.UpdateAvailable == true)
+                await Application.Current.Dispatcher.InvokeAsync(() => HandleUpdateAvailable(updateInfo));
         }
         catch
         {
             // ignored
         }
     }
-
 
     private async Task HandleUpdateAvailable(UpdateInfo updateInfo)
     {
@@ -139,7 +140,7 @@ public partial class MainWindow
 
             if (result == MessageBoxResult.OK)
             {
-                if (await UpdateService.PerformAutoUpdateAsync(updateInfo.DownloadUrl))
+                if (await UpdateService.PerformAutoUpdateAsync(updateInfo.DownloadUrl).ConfigureAwait(false))
                 {
                     Application.Current.Shutdown();
                 }
@@ -221,7 +222,7 @@ public partial class MainWindow
                 var nowHasGreenLumaPath = !string.IsNullOrWhiteSpace(_config.GreenLumaPath);
 
                 if (!hadGreenLumaPath && nowHasGreenLumaPath)
-                    await ImportExistingAppListAsync();
+                    await ImportExistingAppListAsync().ConfigureAwait(true);
             }
         }
         catch
@@ -309,7 +310,7 @@ public partial class MainWindow
 
             try
             {
-                await PerformSearch(query, token);
+                await PerformSearch(query, token).ConfigureAwait(true);
             }
             catch (OperationCanceledException)
             {
@@ -356,12 +357,12 @@ public partial class MainWindow
 
         ShowSearchLoading();
 
-        var results = await Task.Run(() => SearchService.SearchAsync(query), token);
+        var results = await Task.Run(() => SearchService.SearchAsync(query), token).ConfigureAwait(true);
 
         if (token.IsCancellationRequested)
             return;
 
-        await SearchService.FetchIconUrlsAsync(results);
+        await SearchService.FetchIconUrlsAsync(results).ConfigureAwait(true);
 
         if (token.IsCancellationRequested)
             return;
@@ -482,56 +483,36 @@ public partial class MainWindow
         SaveCurrentProfile();
         UpdateGameListState();
 
-        if (!string.IsNullOrEmpty(newGame.IconUrl))
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var cachedPath =
-                        await IconCacheService.DownloadAndCacheIconAsync(newGame.AppId, newGame.IconUrl);
-                    if (string.IsNullOrEmpty(cachedPath))
-                    {
-                        await SearchService.PopulateGameDetailsAsync(newGame);
-                        if (!string.IsNullOrWhiteSpace(newGame.IconUrl))
-                            cachedPath =
-                                await IconCacheService.DownloadAndCacheIconAsync(newGame.AppId, newGame.IconUrl);
-                    }
+        var gameId = newGame.AppId;
+        var gameName = newGame.Name;
+        var gameType = newGame.Type;
 
-                    if (!string.IsNullOrEmpty(cachedPath))
-                        await Dispatcher.InvokeAsync(() =>
-                        {
-                            newGame.IconUrl = cachedPath;
-                            SaveCurrentProfile();
-                        });
-                }
-                catch
-                {
-                    // ignored
-                }
-            });
-        else
-            _ = Task.Run(async () =>
+        _ = Task.Run(async () =>
+        {
+            try
             {
-                try
+                var tempGame = new Game { AppId = gameId, Name = gameName, Type = gameType };
+                await SearchService.PopulateGameDetailsAsync(tempGame).ConfigureAwait(false);
+
+                await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    await SearchService.PopulateGameDetailsAsync(newGame);
-                    if (!string.IsNullOrWhiteSpace(newGame.IconUrl))
+                    if (newGame.Name != tempGame.Name && !string.IsNullOrEmpty(tempGame.Name))
+                        newGame.Name = tempGame.Name;
+
+                    newGame.Type = tempGame.Type;
+
+                    if (!string.IsNullOrEmpty(tempGame.IconUrl))
                     {
-                        var cachedPath =
-                            await IconCacheService.DownloadAndCacheIconAsync(newGame.AppId, newGame.IconUrl);
-                        if (!string.IsNullOrEmpty(cachedPath))
-                            await Dispatcher.InvokeAsync(() =>
-                            {
-                                newGame.IconUrl = cachedPath;
-                                SaveCurrentProfile();
-                            });
+                        newGame.IconUrl = tempGame.IconUrl;
+                        SaveCurrentProfile();
                     }
-                }
-                catch
-                {
-                    // ignored
-                }
-            });
+                });
+            }
+            catch
+            {
+                // ignored
+            }
+        });
     }
 
     private void ProfileComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -563,10 +544,25 @@ public partial class MainWindow
                 }
     }
 
-    private async void LoadProfile(string profileName)
+    private void LoadProfile(string profileName)
     {
         try
         {
+            if (_profileLoadCts != null)
+            {
+                _profileLoadCts.Cancel();
+
+                var oldCts = _profileLoadCts;
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(100, oldCts.Token);
+                    oldCts.Dispose();
+                }, oldCts.Token);
+            }
+
+            _profileLoadCts = new CancellationTokenSource();
+            var token = _profileLoadCts.Token;
+
             _currentProfile = ProfileService.Load(profileName);
 
             if (_currentProfile == null)
@@ -575,58 +571,8 @@ public partial class MainWindow
                 ProfileService.Save(_currentProfile);
             }
 
-            var gamesToProcess = _currentProfile.Games.ToList();
-            var semaphore = new SemaphoreSlim(6);
-            var tasks = new List<Task>();
-            var changed = false;
-
-            foreach (var game in gamesToProcess)
-            {
-                await semaphore.WaitAsync();
-                tasks.Add(Task.Run(async () =>
-                {
-                    try
-                    {
-                        var cachedPath = IconCacheService.GetCachedIconPath(game.AppId);
-                        if (!string.IsNullOrEmpty(cachedPath))
-                        {
-                            game.IconUrl = cachedPath;
-                        }
-                        else
-                        {
-                            string? path = null;
-                            if (!string.IsNullOrWhiteSpace(game.IconUrl) &&
-                                game.IconUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-                                path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
-
-                            if (string.IsNullOrEmpty(path))
-                            {
-                                await SearchService.PopulateGameDetailsAsync(game);
-                                if (!string.IsNullOrWhiteSpace(game.IconUrl))
-                                    path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
-                            }
-
-                            if (!string.IsNullOrEmpty(path))
-                            {
-                                game.IconUrl = path;
-                                changed = true;
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        // ignored
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }));
-            }
-
-            await Task.WhenAll(tasks);
             _games.Clear();
-            foreach (var game in gamesToProcess) _games.Add(game);
+            foreach (var game in _currentProfile.Games) _games.Add(game);
 
             if (_config != null)
             {
@@ -634,14 +580,76 @@ public partial class MainWindow
                 ConfigService.Save(_config);
             }
 
-            if (changed && _currentProfile != null) ProfileService.Save(_currentProfile);
-
             UpdateGameListState();
+
+            var gamesToProcess = _games.ToList();
+            _ = UpdateIconsForCurrentProfileAsync(gamesToProcess, token);
         }
         catch
         {
             // ignored
         }
+    }
+
+    private async Task UpdateIconsForCurrentProfileAsync(List<Game> games, CancellationToken token)
+    {
+        var semaphore = new SemaphoreSlim(6);
+        var tasks = new List<Task>();
+        var changed = false;
+
+        foreach (var game in games)
+        {
+            if (token.IsCancellationRequested) break;
+
+            await semaphore.WaitAsync(token).ConfigureAwait(true);
+
+            tasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    if (token.IsCancellationRequested) return;
+
+                    var isDlc = string.Equals(game.Type, "DLC", StringComparison.OrdinalIgnoreCase);
+                    var cachedPath = IconCacheService.GetCachedIconPath(game.AppId, !isDlc);
+
+                    if (string.IsNullOrEmpty(cachedPath) ||
+                        game.IconUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var tempGame = new Game { AppId = game.AppId, Name = game.Name, Type = game.Type };
+                        await SearchService.PopulateGameDetailsAsync(tempGame).ConfigureAwait(false);
+
+                        if (!string.IsNullOrEmpty(tempGame.IconUrl) && tempGame.IconUrl != game.IconUrl)
+                        {
+                            await Application.Current.Dispatcher.InvokeAsync(() =>
+                            {
+                                game.IconUrl = tempGame.IconUrl;
+                                if (string.IsNullOrEmpty(game.Name) || game.Name.StartsWith("App "))
+                                    game.Name = tempGame.Name;
+                                game.Type = tempGame.Type;
+                            });
+                            changed = true;
+                        }
+                    }
+                    else if (game.IconUrl != cachedPath)
+                    {
+                        await Application.Current.Dispatcher.InvokeAsync(() => game.IconUrl = cachedPath);
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }, token));
+        }
+
+        await Task.WhenAll(tasks).ConfigureAwait(true);
+
+        if (changed && !token.IsCancellationRequested)
+            await Application.Current.Dispatcher.InvokeAsync(SaveCurrentProfile);
     }
 
     private void SaveCurrentProfile()
@@ -691,7 +699,7 @@ public partial class MainWindow
         ShowToast($"Created profile '{newProfile.Name}'");
     }
 
-    private async void ImportProfileButton_Click(object sender, RoutedEventArgs e)
+    private void ImportProfileButton_Click(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -711,6 +719,8 @@ public partial class MainWindow
                 ShowToast("Failed to import profile", false);
                 return;
             }
+
+            foreach (var game in profile.Games) game.IconUrl = string.Empty;
 
             if (!ValidateProfileName(profile.Name))
                 return;
@@ -732,39 +742,13 @@ public partial class MainWindow
                 _profiles.Add(profile.Name);
             }
 
-            var semaphore = new SemaphoreSlim(6);
-            var tasks = new List<Task>();
-            foreach (var game in profile.Games)
-            {
-                await semaphore.WaitAsync();
-                tasks.Add(Task.Run(async () =>
-                {
-                    try
-                    {
-                        game.IconUrl = string.Empty;
-                        await SearchService.PopulateGameDetailsAsync(game);
-                        if (!string.IsNullOrWhiteSpace(game.IconUrl))
-                        {
-                            var path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
-                            if (!string.IsNullOrEmpty(path)) game.IconUrl = path;
-                        }
-                    }
-                    catch
-                    {
-                        // ignored
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }));
-            }
-
-            await Task.WhenAll(tasks);
-
             ProfileService.Save(profile);
-            CmbProfile.SelectedItem = profile.Name;
-            LoadProfile(profile.Name);
+
+            if (CmbProfile.SelectedItem?.ToString() == profile.Name)
+                LoadProfile(profile.Name);
+            else
+                CmbProfile.SelectedItem = profile.Name;
+
             ShowToast($"Imported profile '{profile.Name}'");
         }
         catch
@@ -890,12 +874,12 @@ public partial class MainWindow
 
             foreach (var id in gameLikeAppIds)
             {
-                await semaphore.WaitAsync();
+                await semaphore.WaitAsync().ConfigureAwait(true);
                 tasks.Add(Task.Run(async () =>
                 {
                     try
                     {
-                        var info = await DepotService.FetchAppPackageInfoAsync(id);
+                        var info = await DepotService.FetchAppPackageInfoAsync(id).ConfigureAwait(false);
                         if (info != null)
                         {
                             packageInfos[id] = info;
@@ -914,7 +898,7 @@ public partial class MainWindow
                 }));
             }
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(true);
             tasks.Clear();
 
             var mainAppIdsToCreate = newAppIds
@@ -925,17 +909,17 @@ public partial class MainWindow
 
             foreach (var id in mainAppIdsToCreate)
             {
-                await semaphore.WaitAsync();
+                await semaphore.WaitAsync().ConfigureAwait(true);
                 tasks.Add(Task.Run(async () =>
                 {
                     try
                     {
-                        var info = await DepotService.FetchAppPackageInfoAsync(id);
+                        var info = await DepotService.FetchAppPackageInfoAsync(id).ConfigureAwait(false);
                         if (info == null) return;
 
                         var game = new Game { AppId = id, Name = string.Empty, Type = "Game" };
 
-                        await SearchService.PopulateGameDetailsAsync(game);
+                        await SearchService.PopulateGameDetailsAsync(game).ConfigureAwait(false);
 
                         List<string>? depotsToAssign = null;
 
@@ -959,8 +943,9 @@ public partial class MainWindow
 
                         if (!string.IsNullOrWhiteSpace(game.IconUrl))
                         {
-                            var localPath = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
-                            if (!string.IsNullOrEmpty(localPath)) game.IconUrl = localPath;
+                            var path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl)
+                                .ConfigureAwait(false);
+                            if (!string.IsNullOrEmpty(path)) game.IconUrl = path;
                         }
 
                         importedGames.Add(game);
@@ -976,7 +961,7 @@ public partial class MainWindow
                 }));
             }
 
-            await Task.WhenAll(tasks);
+            await Task.WhenAll(tasks).ConfigureAwait(true);
 
             var depotsAddedCount = 0;
             foreach (var depotId in newAppIds.Where(id => allFoundDepotIds.Contains(id)))
@@ -1153,7 +1138,8 @@ public partial class MainWindow
             {
                 SaveCurrentProfile();
 
-                var totalAppIds = await GreenLumaService.GenerateAppListAsync(_currentProfile, _config);
+                var totalAppIds = await GreenLumaService.GenerateAppListAsync(_currentProfile, _config)
+                    .ConfigureAwait(true);
 
                 var generatedCount = Math.Min(totalAppIds, GreenLumaService.AppListLimit);
 
@@ -1201,7 +1187,7 @@ public partial class MainWindow
             if (!ValidatePathsForLaunch())
                 return;
 
-            if (!await CheckAndGenerateAppList())
+            if (!await CheckAndGenerateAppList().ConfigureAwait(true))
                 return;
 
             var result = CustomMessageBox.Show(
@@ -1217,7 +1203,7 @@ public partial class MainWindow
 
             try
             {
-                if (_config != null && await GreenLumaService.LaunchGreenLumaAsync(_config))
+                if (_config != null && await GreenLumaService.LaunchGreenLumaAsync(_config).ConfigureAwait(true))
                     ShowToast("GreenLuma launched successfully");
                 else
                     ShowToast("Failed to launch GreenLuma. Check settings.", false);
@@ -1406,12 +1392,12 @@ public partial class MainWindow
 
         foreach (var id in gameLikeAppIds)
         {
-            await semaphore.WaitAsync();
+            await semaphore.WaitAsync().ConfigureAwait(true);
             tasks.Add(Task.Run(async () =>
             {
                 try
                 {
-                    var info = await DepotService.FetchAppPackageInfoAsync(id);
+                    var info = await DepotService.FetchAppPackageInfoAsync(id).ConfigureAwait(false);
                     if (info != null)
                     {
                         packageInfos[id] = info;
@@ -1430,7 +1416,7 @@ public partial class MainWindow
             }));
         }
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks).ConfigureAwait(true);
         tasks.Clear();
 
         var mainAppIdsToCreate = newAppIds
@@ -1441,17 +1427,17 @@ public partial class MainWindow
 
         foreach (var id in mainAppIdsToCreate)
         {
-            await semaphore.WaitAsync();
+            await semaphore.WaitAsync().ConfigureAwait(true);
             tasks.Add(Task.Run(async () =>
             {
                 try
                 {
-                    var info = await DepotService.FetchAppPackageInfoAsync(id);
+                    var info = await DepotService.FetchAppPackageInfoAsync(id).ConfigureAwait(false);
                     if (info == null) return;
 
                     var game = new Game { AppId = id, Name = string.Empty, Type = "Game" };
 
-                    await SearchService.PopulateGameDetailsAsync(game);
+                    await SearchService.PopulateGameDetailsAsync(game).ConfigureAwait(false);
 
                     List<string>? depotsToAssign = null;
 
@@ -1475,7 +1461,8 @@ public partial class MainWindow
 
                     if (!string.IsNullOrWhiteSpace(game.IconUrl))
                     {
-                        var path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl);
+                        var path = await IconCacheService.DownloadAndCacheIconAsync(game.AppId, game.IconUrl)
+                            .ConfigureAwait(false);
                         if (!string.IsNullOrEmpty(path)) game.IconUrl = path;
                     }
 
@@ -1488,7 +1475,7 @@ public partial class MainWindow
             }));
         }
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks).ConfigureAwait(true);
 
         var depotsAddedCount = 0;
         foreach (var depotId in newAppIds.Where(id => allFoundDepotIds.Contains(id)))
@@ -1516,7 +1503,7 @@ public partial class MainWindow
 
             if (parentAppId != null)
             {
-                var parentGame = defaultProfile.Games.FirstOrDefault(g => g.AppId == parentAppId) ??
+                var parentGame = _games.FirstOrDefault(g => g.AppId == parentAppId) ??
                                  newGames.FirstOrDefault(g => g.AppId == parentAppId);
 
                 if (parentGame != null && !parentGame.Depots.Contains(depotId))

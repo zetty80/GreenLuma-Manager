@@ -26,7 +26,7 @@ public static class SteamApiCache
         var task = TaskCache.GetOrAdd(key, _ => FetchAndCacheAsync(key, fetchFunc));
         try
         {
-            var result = await task;
+            var result = await task.ConfigureAwait(false);
             return (T)result;
         }
         finally
@@ -37,12 +37,14 @@ public static class SteamApiCache
 
     private static async Task<object> FetchAndCacheAsync<T>(string key, Func<Task<T>> fetchFunc)
     {
-        var data = await fetchFunc();
-        Cache[key] = new CacheEntry<object>
-        {
-            Expiry = DateTime.Now.Add(CacheDurationLocal),
-            Data = data!
-        };
+        var data = await fetchFunc().ConfigureAwait(false);
+
+        if (data != null)
+            Cache[key] = new CacheEntry<object>
+            {
+                Expiry = DateTime.Now.Add(CacheDurationLocal),
+                Data = data
+            };
 
         return data!;
     }
@@ -59,14 +61,15 @@ public class SearchService
 
     private static readonly HttpClient Client = new();
     private static List<SteamApp>? _appListCache;
-    private static readonly Dictionary<string, GameDetails> DetailsCache = [];
+    private static readonly SemaphoreSlim AppListLock = new(1, 1);
+    private static readonly ConcurrentDictionary<string, GameDetails> DetailsCache = new();
     private static DateTime _cacheExpiry = DateTime.MinValue;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(24);
 
     static SearchService()
     {
         Client.DefaultRequestHeaders.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-        Client.Timeout = TimeSpan.FromSeconds(30);
+        Client.Timeout = TimeSpan.FromSeconds(10);
     }
 
     private static async Task<List<Game>> SearchStoreAsync(string query)
@@ -74,7 +77,7 @@ public class SearchService
         try
         {
             var url = string.Format(SteamStoreSearchUrl, Uri.EscapeDataString(query));
-            var response = await Client.GetStringAsync(url);
+            var response = await Client.GetStringAsync(url).ConfigureAwait(false);
             var json = JObject.Parse(response);
 
             var items = json["items"];
@@ -111,8 +114,12 @@ public class SearchService
         if (_appListCache != null && DateTime.Now < _cacheExpiry)
             return _appListCache;
 
+        await AppListLock.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (_appListCache != null && DateTime.Now < _cacheExpiry)
+                return _appListCache;
+
             _appListCache = [];
             uint lastAppId = 0;
             const int maxResults = 50000;
@@ -122,7 +129,7 @@ public class SearchService
                 var url =
                     $"{SteamStoreApiUrl}?key={SteamApiKey}&include_games=true&include_dlc=true&include_software=true&include_videos=true&include_hardware=true&max_results={maxResults}&last_appid={lastAppId}";
 
-                var response = await Client.GetStringAsync(url);
+                var response = await Client.GetStringAsync(url).ConfigureAwait(false);
                 var json = JObject.Parse(response);
                 var apps = json["response"]?["apps"];
 
@@ -156,6 +163,10 @@ public class SearchService
         {
             return _appListCache ?? [];
         }
+        finally
+        {
+            AppListLock.Release();
+        }
     }
 
     public static async Task<List<Game>> SearchAsync(string query, int maxResults = 50)
@@ -172,7 +183,7 @@ public class SearchService
             {
                 if (uint.TryParse(query, out _))
                 {
-                    var detailsMap = await FetchGameDetailsBatchAsync([query]);
+                    var detailsMap = await FetchGameDetailsBatchAsync([query]).ConfigureAwait(false);
                     if (detailsMap.TryGetValue(query, out var details) &&
                         !string.IsNullOrEmpty(details.Name) &&
                         details.Name != $"App {query}")
@@ -183,7 +194,7 @@ public class SearchService
                                 AppId = query,
                                 Name = details.Name,
                                 Type = details.Type,
-                                IconUrl = details.IconUrl
+                                IconUrl = string.Empty
                             }
                         ];
                 }
@@ -192,7 +203,7 @@ public class SearchService
 
                 var localTask = Task.Run(async () =>
                 {
-                    var appList = await GetAppListAsync();
+                    var appList = await GetAppListAsync().ConfigureAwait(false);
                     if (appList.Count == 0) return [];
 
                     return appList
@@ -210,7 +221,7 @@ public class SearchService
                         .ToList();
                 });
 
-                await Task.WhenAll(storeTask, localTask);
+                await Task.WhenAll(storeTask, localTask).ConfigureAwait(false);
 
                 var smartResults = storeTask.Result;
                 var localResults = localTask.Result;
@@ -298,42 +309,6 @@ public class SearchService
         return charIndex == chars.Length;
     }
 
-    private static async Task FetchBatchDetailsAsync(List<Game> games)
-    {
-        var gamesNeedingDetails = games.Where(g => !DetailsCache.ContainsKey(g.AppId)).ToList();
-
-        if (gamesNeedingDetails.Count == 0)
-        {
-            ApplyCachedDetails(games);
-            return;
-        }
-
-        var appIds = gamesNeedingDetails.Select(g => g.AppId).ToList();
-        var detailsMap = await FetchGameDetailsBatchAsync(appIds);
-
-        foreach (var (appId, details) in detailsMap)
-            DetailsCache[appId] = details;
-
-        ApplyCachedDetails(games);
-
-        if (gamesNeedingDetails.Count > 0)
-            _cacheExpiry = DateTime.Now.Add(CacheDuration);
-    }
-
-    private static void ApplyCachedDetails(List<Game> games)
-    {
-        foreach (var game in games)
-            if (DetailsCache.TryGetValue(game.AppId, out var details))
-            {
-                if (details.Name != $"App {game.AppId}")
-                    game.Name = details.Name;
-
-                game.Type = details.Type;
-                if (string.IsNullOrEmpty(game.IconUrl) && !string.IsNullOrEmpty(details.IconUrl))
-                    game.IconUrl = details.IconUrl;
-            }
-    }
-
     private static async Task<Dictionary<string, GameDetails>> FetchGameDetailsBatchAsync(List<string> appIds)
     {
         var results = new Dictionary<string, GameDetails>();
@@ -341,13 +316,24 @@ public class SearchService
 
         foreach (var appId in appIds)
         {
+            if (DetailsCache.TryGetValue(appId, out var memDetails))
+            {
+                results[appId] = memDetails;
+                continue;
+            }
+
             var key = $"details:{appId}";
             if (SteamApiCache.Cache.TryGetValue(key, out var entry) &&
                 DateTime.Now < entry.Expiry &&
                 entry.Data is GameDetails cached)
+            {
                 results[appId] = cached;
+                DetailsCache.TryAdd(appId, cached);
+            }
             else
+            {
                 uncachedAppIds.Add(appId);
+            }
         }
 
         if (uncachedAppIds.Count == 0)
@@ -362,7 +348,8 @@ public class SearchService
                 if (validAppIds.Count == 0) continue;
 
                 var batchResults =
-                    await SteamService.Instance.GetAppInfoBatchAsync(validAppIds.Select(uint.Parse).ToList());
+                    await SteamService.Instance.GetAppInfoBatchAsync(validAppIds.Select(uint.Parse).ToList())
+                        .ConfigureAwait(false);
 
                 foreach (var (appId, details) in batchResults)
                 {
@@ -375,26 +362,20 @@ public class SearchService
                         Expiry = DateTime.Now.Add(TimeSpan.FromMinutes(30)),
                         Data = details
                     };
+                    DetailsCache.TryAdd(appIdStr, details);
                 }
 
                 foreach (var appIdStr in validAppIds.Where(id => !results.ContainsKey(id)))
                 {
-                    var fallbackDetails = new GameDetails("Game", string.Empty, $"App {appIdStr}");
+                    var fallbackDetails = new GameDetails(appIdStr, "Game", $"App {appIdStr}");
                     results[appIdStr] = fallbackDetails;
-
-                    var key = $"details:{appIdStr}";
-                    SteamApiCache.Cache[key] = new CacheEntry<object>
-                    {
-                        Expiry = DateTime.Now.Add(TimeSpan.FromMinutes(30)),
-                        Data = fallbackDetails
-                    };
                 }
             }
             catch
             {
                 foreach (var appIdStr in batch)
                     if (!results.ContainsKey(appIdStr))
-                        results[appIdStr] = new GameDetails("Game", string.Empty, $"App {appIdStr}");
+                        results[appIdStr] = new GameDetails(appIdStr, "Game", $"App {appIdStr}");
             }
 
         return results;
@@ -402,28 +383,60 @@ public class SearchService
 
     public static async Task PopulateGameDetailsAsync(Game game)
     {
-        var detailsMap = await FetchGameDetailsBatchAsync([game.AppId]);
+        var detailsMap = await FetchGameDetailsBatchAsync([game.AppId]).ConfigureAwait(false);
         if (detailsMap.TryGetValue(game.AppId, out var details))
         {
             if (details.Name != $"App {game.AppId}")
                 game.Name = details.Name;
             game.Type = details.Type;
-            if (string.IsNullOrEmpty(game.IconUrl))
-                game.IconUrl = details.IconUrl;
+
+            var iconPath = await IconCacheService.CacheIconForGameAsync(details).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(iconPath))
+                game.IconUrl = iconPath;
         }
     }
 
     public static async Task FetchIconUrlAsync(Game game)
     {
-        if (!string.IsNullOrEmpty(game.IconUrl))
+        if (!string.IsNullOrEmpty(game.IconUrl) && !game.IconUrl.StartsWith("http"))
             return;
 
-        await PopulateGameDetailsAsync(game);
+        await PopulateGameDetailsAsync(game).ConfigureAwait(false);
     }
 
     public static async Task FetchIconUrlsAsync(List<Game> games)
     {
-        await FetchBatchDetailsAsync(games);
+        var appIds = games.Select(g => g.AppId).Distinct().ToList();
+        var detailsMap = await FetchGameDetailsBatchAsync(appIds).ConfigureAwait(false);
+
+        foreach (var game in games)
+            if (detailsMap.TryGetValue(game.AppId, out var details))
+            {
+                if (!string.IsNullOrEmpty(details.Name) && details.Name != $"App {game.AppId}")
+                    game.Name = details.Name;
+                game.Type = details.Type;
+            }
+
+        var semaphore = new SemaphoreSlim(8);
+        var tasks = games.Select(async game =>
+        {
+            if (detailsMap.TryGetValue(game.AppId, out var details))
+            {
+                await semaphore.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    var iconPath = await IconCacheService.CacheIconForGameAsync(details).ConfigureAwait(false);
+                    if (!string.IsNullOrEmpty(iconPath))
+                        game.IconUrl = iconPath;
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }
+        });
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
     }
 
     private record SteamApp(string AppId, string Name);

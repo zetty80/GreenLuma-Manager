@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Net.Http;
+using System.Windows.Media.Imaging;
 
 namespace GreenLuma_Manager.Services;
 
@@ -16,7 +17,7 @@ public class IconCacheService
     {
         Client.DefaultRequestHeaders.Add("User-Agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
-        Client.Timeout = TimeSpan.FromSeconds(30);
+        Client.Timeout = TimeSpan.FromSeconds(10);
     }
 
     public static async Task<string?> DownloadAndCacheIconAsync(string appId, string iconUrl)
@@ -28,19 +29,17 @@ public class IconCacheService
         try
         {
             EnsureIconCacheDirectoryExists();
-            var candidates = BuildCandidateUrls(appId, iconUrl).Distinct().ToList();
-            foreach (var url in candidates)
+            var extension = GetImageExtension(iconUrl);
+            var filePath = Path.Combine(IconCacheDir, appId + extension);
+
+            if (File.Exists(filePath) && new FileInfo(filePath).Length > 0)
+                return filePath;
+
+            var data = await TryDownloadWithRetries(iconUrl, 3, TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+            if (data is { Length: > 0 })
             {
-                var extension = GetImageExtension(url);
-                var filePath = Path.Combine(IconCacheDir, appId + extension);
-                if (File.Exists(filePath) && new FileInfo(filePath).Length > 0)
-                    return filePath;
-                var data = await TryDownloadWithRetries(url, 3, TimeSpan.FromMilliseconds(400));
-                if (data is { Length: > 0 })
-                {
-                    await File.WriteAllBytesAsync(filePath, data);
-                    return filePath;
-                }
+                await File.WriteAllBytesAsync(filePath, data).ConfigureAwait(false);
+                return filePath;
             }
         }
         catch
@@ -51,18 +50,173 @@ public class IconCacheService
         return null;
     }
 
-    private static IEnumerable<string> BuildCandidateUrls(string appId, string primary)
+    public static async Task<string?> CacheIconForGameAsync(GameDetails details)
     {
-        yield return primary;
-        var base1 = $"https://cdn.cloudflare.steamstatic.com/steam/apps/{appId}";
-        var base2 = $"https://cdn.akamai.steamstatic.com/steam/apps/{appId}";
-        var base3 = $"https://steamcdn-a.akamaihd.net/steam/apps/{appId}";
-        yield return base1 + "/header.jpg";
-        yield return base2 + "/header.jpg";
-        yield return base3 + "/header.jpg";
-        yield return base1 + "/capsule_231x87.jpg";
-        yield return base1 + "/capsule_616x353.jpg";
-        yield return base1 + "/library_600x900.jpg";
+        return await CacheIconForGameRecursiveAsync(details, 0).ConfigureAwait(false);
+    }
+
+    private static async Task<string?> CacheIconForGameRecursiveAsync(GameDetails details, int depth)
+    {
+        if (depth > 2) return null;
+
+        EnsureIconCacheDirectoryExists();
+
+        var isDlc = string.Equals(details.Type, "DLC", StringComparison.OrdinalIgnoreCase);
+        var cached = GetCachedIconPath(details.AppId, isDlc);
+        if (!string.IsNullOrEmpty(cached)) return cached;
+
+        var candidates = new List<IconCandidate>();
+
+        if (isDlc)
+        {
+            if (!string.IsNullOrEmpty(details.HeroHash))
+            {
+                candidates.Add(new IconCandidate(
+                    $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/{details.HeroHash}/hero_capsule.jpg"));
+                candidates.Add(new IconCandidate(
+                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/{details.HeroHash}/hero_capsule.jpg"));
+            }
+
+            if (!string.IsNullOrEmpty(details.MainHash))
+            {
+                candidates.Add(new IconCandidate(
+                    $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/{details.MainHash}/capsule_616x353.jpg"));
+                candidates.Add(new IconCandidate(
+                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/{details.MainHash}/capsule_616x353.jpg"));
+            }
+            else
+            {
+                candidates.Add(new IconCandidate(
+                    $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/capsule_616x353.jpg"));
+                candidates.Add(new IconCandidate(
+                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/capsule_616x353.jpg"));
+            }
+
+            if (!string.IsNullOrEmpty(details.HeaderImage))
+            {
+                candidates.Add(new IconCandidate(
+                    $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/{details.HeaderImage}"));
+                candidates.Add(new IconCandidate(
+                    $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/{details.HeaderImage}"));
+                candidates.Add(new IconCandidate(
+                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/{details.HeaderImage}"));
+            }
+
+            candidates.Add(new IconCandidate(
+                $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/header.jpg"));
+            candidates.Add(new IconCandidate(
+                $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/header.jpg"));
+            candidates.Add(new IconCandidate(
+                $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/header.jpg"));
+        }
+        else
+        {
+            if (!string.IsNullOrEmpty(details.ClientIconHash))
+            {
+                candidates.Add(new IconCandidate(
+                    $"https://shared.fastly.steamstatic.com/community_assets/images/apps/{details.AppId}/{details.ClientIconHash}.ico",
+                    64));
+                candidates.Add(new IconCandidate(
+                    $"https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/{details.AppId}/{details.ClientIconHash}.ico",
+                    64));
+            }
+
+            if (!string.IsNullOrEmpty(details.HeroHash))
+            {
+                candidates.Add(new IconCandidate(
+                    $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/{details.HeroHash}/hero_capsule.jpg"));
+                candidates.Add(new IconCandidate(
+                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/{details.HeroHash}/hero_capsule.jpg"));
+            }
+
+            if (!string.IsNullOrEmpty(details.MainHash))
+            {
+                candidates.Add(new IconCandidate(
+                    $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/{details.MainHash}/capsule_616x353.jpg"));
+                candidates.Add(new IconCandidate(
+                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/{details.MainHash}/capsule_616x353.jpg"));
+            }
+            else
+            {
+                candidates.Add(new IconCandidate(
+                    $"https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/capsule_616x353.jpg"));
+                candidates.Add(new IconCandidate(
+                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/capsule_616x353.jpg"));
+            }
+
+            if (!string.IsNullOrEmpty(details.HeaderImage))
+            {
+                candidates.Add(new IconCandidate(
+                    $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/{details.HeaderImage}"));
+                candidates.Add(new IconCandidate(
+                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/{details.HeaderImage}"));
+            }
+
+            candidates.Add(new IconCandidate(
+                $"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{details.AppId}/header.jpg"));
+            candidates.Add(new IconCandidate(
+                $"https://cdn.cloudflare.steamstatic.com/steam/apps/{details.AppId}/header.jpg"));
+        }
+
+        foreach (var candidate in candidates)
+            try
+            {
+                var data = await TryDownloadWithRetries(candidate.Url, 2, TimeSpan.FromMilliseconds(500))
+                    .ConfigureAwait(false);
+                if (data == null || data.Length == 0) continue;
+
+                if (candidate.MinSize > 0 && !IsValidImageSize(data, candidate.MinSize))
+                    continue;
+
+                var extension = GetImageExtension(candidate.Url);
+                var filePath = Path.Combine(IconCacheDir, details.AppId + extension);
+                await File.WriteAllBytesAsync(filePath, data).ConfigureAwait(false);
+                return filePath;
+            }
+            catch
+            {
+                // ignored
+            }
+
+        if (isDlc && !string.IsNullOrEmpty(details.ParentAppId) && uint.TryParse(details.ParentAppId, out var parentId))
+            try
+            {
+                var parentDetails = await SteamService.Instance.GetGameDetailsAsync(parentId).ConfigureAwait(false);
+                if (parentDetails != null)
+                {
+                    var parentPath = await CacheIconForGameRecursiveAsync(parentDetails, depth + 1)
+                        .ConfigureAwait(false);
+                    if (!string.IsNullOrEmpty(parentPath) && File.Exists(parentPath))
+                    {
+                        var ext = Path.GetExtension(parentPath);
+                        var myPath = Path.Combine(IconCacheDir, details.AppId + ext);
+                        File.Copy(parentPath, myPath, true);
+                        return myPath;
+                    }
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+
+        return null;
+    }
+
+    private static bool IsValidImageSize(byte[] data, int minSize)
+    {
+        try
+        {
+            using var ms = new MemoryStream(data);
+            var decoder = BitmapDecoder.Create(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            if (decoder.Frames.Count == 0) return false;
+            var frame = decoder.Frames[0];
+            return frame.PixelWidth >= minSize;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static async Task<byte[]?> TryDownloadWithRetries(string url, int maxAttempts, TimeSpan delay)
@@ -71,12 +225,12 @@ public class IconCacheService
         {
             try
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                using var resp = await Client.GetAsync(url, cts.Token);
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                using var resp = await Client.GetAsync(url, cts.Token).ConfigureAwait(false);
                 if (!resp.IsSuccessStatusCode)
-                    throw new HttpRequestException();
-                var data = await resp.Content.ReadAsByteArrayAsync(cts.Token);
-                if (data.Length > 256)
+                    return null;
+                var data = await resp.Content.ReadAsByteArrayAsync(cts.Token).ConfigureAwait(false);
+                if (data.Length > 0)
                     return data;
             }
             catch
@@ -85,28 +239,28 @@ public class IconCacheService
                     break;
             }
 
-            await Task.Delay(delay);
+            await Task.Delay(delay).ConfigureAwait(false);
         }
 
         return null;
     }
 
-    public static string? GetCachedIconPath(string appId)
+    public static string? GetCachedIconPath(string appId, bool preferJpg = false)
     {
-        if (string.IsNullOrEmpty(appId))
-            return null;
+        if (string.IsNullOrEmpty(appId)) return null;
 
         try
         {
-            if (!Directory.Exists(IconCacheDir))
-                return null;
+            if (!Directory.Exists(IconCacheDir)) return null;
 
-            string[] extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+            var preferences = preferJpg
+                ? new[] { ".jpg", ".jpeg", ".ico", ".png", ".webp" }
+                : new[] { ".ico", ".jpg", ".jpeg", ".png", ".webp" };
 
-            foreach (var ext in extensions)
+            foreach (var ext in preferences)
             {
                 var filePath = Path.Combine(IconCacheDir, $"{appId}{ext}");
-                if (File.Exists(filePath))
+                if (File.Exists(filePath) && new FileInfo(filePath).Length > 0)
                     return filePath;
             }
         }
@@ -120,15 +274,13 @@ public class IconCacheService
 
     public static void DeleteCachedIcon(string appId)
     {
-        if (string.IsNullOrEmpty(appId))
-            return;
+        if (string.IsNullOrEmpty(appId)) return;
 
         try
         {
-            if (!Directory.Exists(IconCacheDir))
-                return;
+            if (!Directory.Exists(IconCacheDir)) return;
 
-            string[] extensions = [".jpg", ".jpeg", ".png", ".gif", ".webp"];
+            string[] extensions = [".jpg", ".ico", ".jpeg", ".png", ".gif", ".webp"];
 
             foreach (var ext in extensions)
             {
@@ -150,8 +302,7 @@ public class IconCacheService
     {
         try
         {
-            if (!Directory.Exists(IconCacheDir))
-                return;
+            if (!Directory.Exists(IconCacheDir)) return;
             var files = Directory.GetFiles(IconCacheDir);
             foreach (var file in files)
                 try
@@ -181,16 +332,11 @@ public class IconCacheService
         try
         {
             var lower = url.ToLower();
-
-            if (lower.Contains(".jpg") || lower.Contains("jpeg"))
-                return ".jpg";
-            if (lower.Contains(".png"))
-                return ".png";
-            if (lower.Contains(".gif"))
-                return ".gif";
-            if (lower.Contains(".webp"))
-                return ".webp";
-
+            if (lower.Contains(".ico")) return ".ico";
+            if (lower.Contains(".jpg") || lower.Contains("jpeg")) return ".jpg";
+            if (lower.Contains(".png")) return ".png";
+            if (lower.Contains(".gif")) return ".gif";
+            if (lower.Contains(".webp")) return ".webp";
             return ".jpg";
         }
         catch
@@ -198,4 +344,6 @@ public class IconCacheService
             return ".jpg";
         }
     }
+
+    private record IconCandidate(string Url, int MinSize = 0);
 }

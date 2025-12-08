@@ -47,59 +47,115 @@ public sealed class SteamService : IDisposable
         _isRunning = false;
         _cts.Cancel();
         _steamClient.Disconnect();
-        _callbackLoop.Wait(1000);
+        try
+        {
+            _callbackLoop.Wait(1000);
+        }
+        catch
+        {
+            // ignored
+        }
+
         _cts.Dispose();
+    }
+
+    public async Task<GameDetails?> GetGameDetailsAsync(uint appId)
+    {
+        var result = await GetAppInfoBatchAsync([appId]).ConfigureAwait(false);
+        return result.GetValueOrDefault(appId);
     }
 
     public async Task<Dictionary<uint, GameDetails>> GetAppInfoBatchAsync(List<uint> appIds)
     {
         var results = new Dictionary<uint, GameDetails>();
+        var maxRetries = 2;
 
-        try
-        {
-            await EnsureReadyAsync();
-
-            var requests = appIds.Select(id => new SteamApps.PICSRequest { ID = id, AccessToken = 0 }).ToList();
-            var job = _steamApps.PICSGetProductInfo(requests, []);
-            var result = await job.ToTask();
-
-            if (result.Failed || result.Results == null)
-                return results;
-
-            foreach (var callback in result.Results)
-            foreach (var (appId, appData) in callback.Apps)
+        for (var attempt = 0; attempt <= maxRetries; attempt++)
+            try
             {
-                var kv = appData.KeyValues;
-                var common = kv["common"];
-                var name = common["name"].Value ?? $"App {appId}";
-                var type = common["type"].Value ?? "Game";
-                var iconHash = common["clienticon"].Value;
+                await EnsureReadyAsync().ConfigureAwait(false);
 
-                var iconUrl = !string.IsNullOrEmpty(iconHash)
-                    ? $"https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/{appId}/{iconHash}.jpg"
-                    : $"https://cdn.cloudflare.steamstatic.com/steam/apps/{appId}/header.jpg";
+                var requests = appIds.Select(id => new SteamApps.PICSRequest { ID = id, AccessToken = 0 }).ToList();
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
-                results[appId] = new GameDetails(MapSteamTypeToDisplayType(type), iconUrl, name);
+                var job = _steamApps.PICSGetProductInfo(requests, []);
+                var task = job.ToTask();
+
+                if (await Task.WhenAny(task, Task.Delay(5000, cts.Token)) != task)
+                {
+                    if (attempt < maxRetries) continue;
+                    break;
+                }
+
+                var result = await task.ConfigureAwait(false);
+
+                if (result.Failed || result.Results == null)
+                {
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(500, cts.Token).ConfigureAwait(false);
+                        continue;
+                    }
+
+                    return results;
+                }
+
+                foreach (var callback in result.Results)
+                foreach (var (appId, appData) in callback.Apps)
+                {
+                    var kv = appData.KeyValues;
+                    var common = kv["common"];
+
+                    var name = common["name"].Value ?? $"App {appId}";
+                    var type = MapSteamTypeToDisplayType(common["type"].Value ?? "Game");
+
+                    var clientIconHash = common["clienticon"].Value;
+                    var parentId = common["parent"].Value;
+
+                    var libAssets = common["library_assets"];
+                    var heroHash = libAssets["hero_capsule"]["image"].Value;
+
+                    var assets = common["assets"];
+                    var mainHash = assets["main_capsule"]["image"].Value;
+
+                    var headerNode = common["header_image"];
+                    var headerImage = headerNode.Value;
+                    if (string.IsNullOrEmpty(headerImage))
+                        headerImage = headerNode["english"].Value;
+
+                    results[appId] = new GameDetails(
+                        appId.ToString(),
+                        type,
+                        name,
+                        clientIconHash,
+                        heroHash,
+                        mainHash,
+                        parentId,
+                        headerImage
+                    );
+                }
+
+                if (results.Count > 0) return results;
+            }
+            catch
+            {
+                if (attempt == maxRetries) break;
+                await Task.Delay(500).ConfigureAwait(false);
             }
 
-            return results;
-        }
-        catch
-        {
-            return results;
-        }
+        return results;
     }
 
     public async Task<AppPackageInfo?> GetAppPackageInfoAsync(uint appId)
     {
         try
         {
-            await EnsureReadyAsync();
+            await EnsureReadyAsync().ConfigureAwait(false);
 
             var request = new SteamApps.PICSRequest { ID = appId, AccessToken = 0 };
             var job = _steamApps.PICSGetProductInfo([request], []);
 
-            var result = await job.ToTask();
+            var result = await job.ToTask().ConfigureAwait(false);
 
             if (result.Failed || result.Results == null)
                 return null;
@@ -163,10 +219,10 @@ public sealed class SteamService : IDisposable
     private async Task EnsureReadyAsync()
     {
         if (!_isConnected)
-            await _connectedTcs.Task;
+            await _connectedTcs.Task.ConfigureAwait(false);
 
         if (!_isLoggedOn)
-            await _loggedOnTcs.Task;
+            await _loggedOnTcs.Task.ConfigureAwait(false);
     }
 
     private async Task CallbackLoop()
@@ -174,7 +230,7 @@ public sealed class SteamService : IDisposable
         while (_isRunning && !_cts.Token.IsCancellationRequested)
         {
             _callbackManager.RunWaitCallbacks(TimeSpan.FromMilliseconds(100));
-            await Task.Delay(100);
+            await Task.Delay(100).ConfigureAwait(false);
         }
     }
 
@@ -223,4 +279,13 @@ public sealed class SteamService : IDisposable
     }
 }
 
-public record GameDetails(string Type, string IconUrl, string Name);
+public record GameDetails(
+    string AppId,
+    string Type,
+    string Name,
+    string? ClientIconHash = null,
+    string? HeroHash = null,
+    string? MainHash = null,
+    string? ParentAppId = null,
+    string? HeaderImage = null
+);
